@@ -117,21 +117,21 @@ func (v *validator) SubmitAggregateAndProof(ctx context.Context, slot types.Slot
 
 // Signs input slot with domain selection proof. This is used to create the signature for aggregator selection.
 func (v *validator) signSlotWithSelectionProof(ctx context.Context, pubKey [48]byte, slot types.Slot) (signature []byte, error error) {
-	domain, err := v.domainData(ctx, helpers.SlotToEpoch(slot), params.BeaconConfig().DomainSelectionProof[:])
+	domainData, err := v.domainData(ctx, helpers.SlotToEpoch(slot), params.BeaconConfig().DomainSelectionProof[:])
 	if err != nil {
 		return nil, err
 	}
 
 	var sig bls.Signature
 	sszUint := types.SSZUint64(slot)
-	root, err := helpers.ComputeSigningRoot(&sszUint, domain.SignatureDomain)
+	root, err := helpers.ComputeSigningRoot(&sszUint, domainData.SignatureDomain)
 	if err != nil {
 		return nil, err
 	}
 	sig, err = v.keyManager.Sign(ctx, &validatorpb.SignRequest{
 		PublicKey:       pubKey[:],
 		SigningRoot:     root[:],
-		SignatureDomain: domain.SignatureDomain,
+		SignatureDomain: domainData.SignatureDomain,
 		Object:          &validatorpb.SignRequest_Slot{Slot: slot},
 	})
 	if err != nil {

@@ -16,7 +16,7 @@ import (
 )
 
 // retrieves the signature set from the raw data, public key,signature and domain provided.
-func signatureSet(signedData, pub, signature, domain []byte) (*bls.SignatureSet, error) {
+func signatureSet(signedData, pub, signature []byte, domain types.Domain) (*bls.SignatureSet, error) {
 	publicKey, err := bls.PublicKeyFromBytes(pub)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not convert bytes to public key")
@@ -37,7 +37,7 @@ func signatureSet(signedData, pub, signature, domain []byte) (*bls.SignatureSet,
 }
 
 // verifies the signature from the raw data, public key and domain provided.
-func verifySignature(signedData, pub, signature, domain []byte) error {
+func verifySignature(signedData, pub, signature []byte, domain types.Domain) error {
 	set, err := signatureSet(signedData, pub, signature, domain)
 	if err != nil {
 		return err
@@ -112,10 +112,10 @@ func RandaoSignatureSet(beaconState iface.ReadOnlyBeaconState,
 }
 
 // retrieves the randao related signing data from the state.
-func randaoSigningData(beaconState iface.ReadOnlyBeaconState) ([]byte, []byte, []byte, error) {
+func randaoSigningData(beaconState iface.ReadOnlyBeaconState) ([]byte, []byte, types.Domain, error) {
 	proposerIdx, err := helpers.BeaconProposerIndex(beaconState)
 	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "could not get beacon proposer index")
+		return nil, nil, types.Domain{}, errors.Wrap(err, "could not get beacon proposer index")
 	}
 	proposerPub := beaconState.PubkeyAtIndex(proposerIdx)
 
@@ -125,7 +125,7 @@ func randaoSigningData(beaconState iface.ReadOnlyBeaconState) ([]byte, []byte, [
 
 	domain, err := helpers.Domain(beaconState.Fork(), currentEpoch, params.BeaconConfig().DomainRandao, beaconState.GenesisValidatorRoot())
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, types.Domain{}, err
 	}
 	return buf, proposerPub[:], domain, nil
 }
@@ -135,7 +135,7 @@ func createAttestationSignatureSet(
 	ctx context.Context,
 	beaconState iface.ReadOnlyBeaconState,
 	atts []*ethpb.Attestation,
-	domain []byte,
+	domain types.Domain,
 ) (*bls.SignatureSet, error) {
 	if len(atts) == 0 {
 		return nil, nil

@@ -707,13 +707,13 @@ func (v *validator) AllValidatorsAreExited(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (v *validator) domainData(ctx context.Context, epoch types.Epoch, domain []byte) (*ethpb.DomainResponse, error) {
+func (v *validator) domainData(ctx context.Context, epoch types.Epoch, domainType []byte) (*ethpb.DomainResponse, error) {
 	v.domainDataLock.Lock()
 	defer v.domainDataLock.Unlock()
 
 	req := &ethpb.DomainRequest{
 		Epoch:  epoch,
-		Domain: domain,
+		Domain: domainType,
 	}
 
 	key := strings.Join([]string{strconv.FormatUint(uint64(req.Epoch), 10), hex.EncodeToString(req.Domain)}, ",")

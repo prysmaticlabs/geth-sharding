@@ -46,13 +46,13 @@ func ComputeDomainAndSign(st iface.ReadOnlyBeaconState, epoch types.Epoch, obj f
 //        object_root=hash_tree_root(ssz_object),
 //        domain=domain,
 //    ))
-func ComputeSigningRoot(object fssz.HashRoot, domain []byte) ([32]byte, error) {
+func ComputeSigningRoot(object fssz.HashRoot, domain types.Domain) ([32]byte, error) {
 	return signingData(object.HashTreeRoot, domain)
 }
 
 // Computes the signing data by utilising the provided root function and then
 // returning the signing data of the container object.
-func signingData(rootFunc func() ([32]byte, error), domain []byte) ([32]byte, error) {
+func signingData(rootFunc func() ([32]byte, error), domain types.Domain) ([32]byte, error) {
 	objRoot, err := rootFunc()
 	if err != nil {
 		return [32]byte{}, err
@@ -78,7 +78,7 @@ func ComputeDomainVerifySigningRoot(st iface.BeaconState, index types.ValidatorI
 }
 
 // VerifySigningRoot verifies the signing root of an object given it's public key, signature and domain.
-func VerifySigningRoot(obj fssz.HashRoot, pub, signature, domain []byte) error {
+func VerifySigningRoot(obj fssz.HashRoot, pub, signature []byte, domain types.Domain) error {
 	publicKey, err := bls.PublicKeyFromBytes(pub)
 	if err != nil {
 		return errors.Wrap(err, "could not convert bytes to public key")
@@ -98,7 +98,7 @@ func VerifySigningRoot(obj fssz.HashRoot, pub, signature, domain []byte) error {
 }
 
 // VerifyBlockSigningRoot verifies the signing root of a block given it's public key, signature and domain.
-func VerifyBlockSigningRoot(pub, signature, domain []byte, rootFunc func() ([32]byte, error)) error {
+func VerifyBlockSigningRoot(pub, signature []byte, domain types.Domain, rootFunc func() ([32]byte, error)) error {
 	set, err := BlockSignatureSet(pub, signature, domain, rootFunc)
 	if err != nil {
 		return err
@@ -120,7 +120,7 @@ func VerifyBlockSigningRoot(pub, signature, domain []byte, rootFunc func() ([32]
 
 // BlockSignatureSet retrieves the relevant signature, message and pubkey data from a block and collating it
 // into a signature set object.
-func BlockSignatureSet(pub, signature, domain []byte, rootFunc func() ([32]byte, error)) (*bls.SignatureSet, error) {
+func BlockSignatureSet(pub, signature []byte, domain types.Domain, rootFunc func() ([32]byte, error)) (*bls.SignatureSet, error) {
 	publicKey, err := bls.PublicKeyFromBytes(pub)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not convert bytes to public key")
@@ -138,7 +138,7 @@ func BlockSignatureSet(pub, signature, domain []byte, rootFunc func() ([32]byte,
 }
 
 // VerifyBlockHeaderSigningRoot verifies the signing root of a block header given it's public key, signature and domain.
-func VerifyBlockHeaderSigningRoot(blkHdr *ethpb.BeaconBlockHeader, pub, signature, domain []byte) error {
+func VerifyBlockHeaderSigningRoot(blkHdr *ethpb.BeaconBlockHeader, pub, signature []byte, domain types.Domain) error {
 	publicKey, err := bls.PublicKeyFromBytes(pub)
 	if err != nil {
 		return errors.Wrap(err, "could not convert bytes to public key")
@@ -170,7 +170,7 @@ func VerifyBlockHeaderSigningRoot(blkHdr *ethpb.BeaconBlockHeader, pub, signatur
 //        genesis_validators_root = Root()  # all bytes zero by default
 //    fork_data_root = compute_fork_data_root(fork_version, genesis_validators_root)
 //    return Domain(domain_type + fork_data_root[:28])
-func ComputeDomain(domainType [DomainByteLength]byte, forkVersion, genesisValidatorsRoot []byte) ([]byte, error) {
+func ComputeDomain(domainType [DomainByteLength]byte, forkVersion, genesisValidatorsRoot []byte) (types.Domain, error) {
 	if forkVersion == nil {
 		forkVersion = params.BeaconConfig().GenesisForkVersion
 	}
@@ -182,18 +182,19 @@ func ComputeDomain(domainType [DomainByteLength]byte, forkVersion, genesisValida
 
 	forkDataRoot, err := computeForkDataRoot(forkBytes[:], genesisValidatorsRoot)
 	if err != nil {
-		return nil, err
+		return types.Domain{}, err
 	}
 
 	return domain(domainType, forkDataRoot[:]), nil
 }
 
 // This returns the bls domain given by the domain type and fork data root.
-func domain(domainType [DomainByteLength]byte, forkDataRoot []byte) []byte {
+func domain(domainType [DomainByteLength]byte, forkDataRoot []byte) types.Domain {
 	var b []byte
 	b = append(b, domainType[:4]...)
 	b = append(b, forkDataRoot[:28]...)
-	return b
+	b32 := bytesutil.ToBytes32(b)
+	return b32[:]
 }
 
 // this returns the 32byte fork data root for the ``current_version`` and ``genesis_validators_root``.

@@ -2768,8 +2768,8 @@ def prysm_deps():
     go_repository(
         name = "com_github_prysmaticlabs_eth2_types",
         importpath = "github.com/prysmaticlabs/eth2-types",
-        sum = "h1:1dN7YAqMN3oAJ0LceWcyv/U4jHLh+5urnSnr4br6zg4=",
-        version = "v0.0.0-20210303084904-c9735a06829d",
+        sum = "h1:V4SVdsyzkVmJ6x9KLrMaI5PjzhrszGxCiVY3FDtaL7U=",
+        version = "v0.0.0-20210703093139-f9e2869b8371",
     )
     go_repository(
         name = "com_github_prysmaticlabs_go_bitfield",

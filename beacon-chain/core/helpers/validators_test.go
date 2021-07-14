@@ -6,7 +6,7 @@ import (
 
 	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/cache"
-	"github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	v1 "github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
@@ -436,7 +436,7 @@ func TestDomain_OK(t *testing.T) {
 	for _, tt := range tests {
 		domain, err := Domain(state.Fork, tt.epoch, tt.domainType, nil)
 		require.NoError(t, err)
-		assert.DeepEqual(t, tt.result[:8], domain[:8], "Unexpected domain version")
+		assert.DeepEqual(t, types.Domain(tt.result[:8]), domain[:8], "Unexpected domain version")
 	}
 }
 

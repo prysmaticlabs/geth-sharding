@@ -236,13 +236,13 @@ message DomainRequest {
     uint64 epoch = 1 [(ethereum.eth.ext.cast_type) = "github.com/prysmaticlabs/eth2-types.Epoch"];
 
     // The bytes domain specified by the validator.
-    bytes domain = 2;
+    bytes domain = 2 [(ethereum.eth.ext.cast_type) = "github.com/prysmaticlabs/eth2-types.Domain", (ethereum.eth.ext.ssz_size) = "32"];
 }
 
 message DomainResponse {
     // The signature domain is a byte array used by validators when
     // signing data related to block proposals and attestations.
-    bytes signature_domain = 1;
+    bytes signature_domain = 1 [(ethereum.eth.ext.cast_type) = "github.com/prysmaticlabs/eth2-types.Domain", (ethereum.eth.ext.ssz_size) = "32"];
 }
 
 message ValidatorActivationRequest {

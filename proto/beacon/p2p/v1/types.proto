@@ -130,7 +130,7 @@ message SigningData {
   // The root of the object being signed.
   bytes object_root = 1 [(ethereum.eth.ext.ssz_size) = "32"];
   // The domain for the particular object being signed.
-  bytes domain = 2 [(ethereum.eth.ext.ssz_size) = "32"];
+  bytes domain = 2 [(ethereum.eth.ext.cast_type) = "github.com/prysmaticlabs/eth2-types.Domain", (ethereum.eth.ext.ssz_size) = "32"];
 }
 
 message ForkData {

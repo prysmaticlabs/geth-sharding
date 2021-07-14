@@ -285,9 +285,9 @@ func ComputeProposerIndex(bState iface.ReadOnlyValidators, activeIndices []types
 //    epoch = get_current_epoch(state) if epoch is None else epoch
 //    fork_version = state.fork.previous_version if epoch < state.fork.epoch else state.fork.current_version
 //    return compute_domain(domain_type, fork_version, state.genesis_validators_root)
-func Domain(fork *pb.Fork, epoch types.Epoch, domainType [bls.DomainByteLength]byte, genesisRoot []byte) ([]byte, error) {
+func Domain(fork *pb.Fork, epoch types.Epoch, domainType [bls.DomainByteLength]byte, genesisRoot []byte) (types.Domain, error) {
 	if fork == nil {
-		return []byte{}, errors.New("nil fork or domain type")
+		return types.Domain{}, errors.New("nil fork or domain type")
 	}
 	var forkVersion []byte
 	if epoch < fork.Epoch {
@@ -296,7 +296,7 @@ func Domain(fork *pb.Fork, epoch types.Epoch, domainType [bls.DomainByteLength]b
 		forkVersion = fork.CurrentVersion
 	}
 	if len(forkVersion) != 4 {
-		return []byte{}, errors.New("fork version length is not 4 byte")
+		return types.Domain{}, errors.New("fork version length is not 4 byte")
 	}
 	var forkVersionArray [4]byte
 	copy(forkVersionArray[:], forkVersion[:4])

@@ -642,7 +642,7 @@ func TestSignBlock(t *testing.T) {
 	secretKey, err := bls.SecretKeyFromBytes(bytesutil.PadTo([]byte{1}, 32))
 	require.NoError(t, err, "Failed to generate key from bytes")
 	publicKey := secretKey.PublicKey()
-	proposerDomain := make([]byte, 32)
+	proposerDomain := types.Domain(make([]byte, 32))
 	m.validatorClient.EXPECT().
 		DomainData(gomock.Any(), gomock.Any()).
 		Return(&ethpb.DomainResponse{SignatureDomain: proposerDomain}, nil)

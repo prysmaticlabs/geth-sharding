@@ -1071,8 +1071,8 @@ github.com/prometheus/tsdb v0.10.0 h1:If5rVCMTp6W2SiRAQFlbpJNgVlgMEd+U2GZckwK38i
 github.com/prometheus/tsdb v0.10.0/go.mod h1:oi49uRhEe9dPUTlS3JRZOwJuVi6tmh10QSgwXEyGCt4=
 github.com/prysmaticlabs/bazel-go-ethereum v0.0.0-20210707101027-e8523651bf6f h1:HPGVFTo7e9n5e0kIlzlgRUPCBpuwHSkSTIIiJyJpAgc=
 github.com/prysmaticlabs/bazel-go-ethereum v0.0.0-20210707101027-e8523651bf6f/go.mod h1:gEAkxJY2/a1FO2DGrkeJOc9lMwlwt9T+Hyc5kNMVHJs=
-github.com/prysmaticlabs/eth2-types v0.0.0-20210303084904-c9735a06829d h1:1dN7YAqMN3oAJ0LceWcyv/U4jHLh+5urnSnr4br6zg4=
-github.com/prysmaticlabs/eth2-types v0.0.0-20210303084904-c9735a06829d/go.mod h1:kOmQ/zdobQf7HUohDTifDNFEZfNaSCIY5fkONPL+dWU=
+github.com/prysmaticlabs/eth2-types v0.0.0-20210712152240-10d33f6e0661 h1:IVswblgBm0x96fXntlW5MXngGL8ypa40+ynnsy6hLR4=
+github.com/prysmaticlabs/eth2-types v0.0.0-20210712152240-10d33f6e0661/go.mod h1:kOmQ/zdobQf7HUohDTifDNFEZfNaSCIY5fkONPL+dWU=
 github.com/prysmaticlabs/go-bitfield v0.0.0-20210108222456-8e92c3709aa0/go.mod h1:hCwmef+4qXWjv0jLDbQdWnL0Ol7cS7/lCSS26WR+u6s=
 github.com/prysmaticlabs/go-bitfield v0.0.0-20210706153858-5cb5ce8bdbfe h1:9rrmgQval2GOmtMAgGLdqcCEZLraNaN3k2mY+07cx64=
 github.com/prysmaticlabs/go-bitfield v0.0.0-20210706153858-5cb5ce8bdbfe/go.mod h1:wmuf/mdK4VMD+jA9ThwcUKjg3a2XWM9cVfFYjDyY4j4=

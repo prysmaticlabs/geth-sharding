@@ -50,7 +50,7 @@ message SignRequest {
 
     // Signature domain and the beacon chain objects to allow server to verify
     // the contents and to prevent slashing.
-    bytes signature_domain = 3;
+    bytes signature_domain = 3 [(ethereum.eth.ext.cast_type) = "github.com/prysmaticlabs/eth2-types.Domain", (ethereum.eth.ext.ssz_size) = "32"];
     // Beacon chain objects. [100-200]
     oneof object {
         // Phase0 objects.

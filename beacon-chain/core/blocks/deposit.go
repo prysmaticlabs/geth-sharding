@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
@@ -234,11 +235,11 @@ func verifyDeposit(beaconState iface.ReadOnlyBeaconState, deposit *ethpb.Deposit
 	return nil
 }
 
-func verifyDepositDataSigningRoot(obj *ethpb.Deposit_Data, domain []byte) error {
+func verifyDepositDataSigningRoot(obj *ethpb.Deposit_Data, domain types.Domain) error {
 	return depositutil.VerifyDepositSignature(obj, domain)
 }
 
-func verifyDepositDataWithDomain(ctx context.Context, deps []*ethpb.Deposit, domain []byte) error {
+func verifyDepositDataWithDomain(ctx context.Context, deps []*ethpb.Deposit, domain types.Domain) error {
 	if len(deps) == 0 {
 		return nil
 	}
