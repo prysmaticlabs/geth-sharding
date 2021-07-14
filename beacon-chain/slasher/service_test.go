@@ -30,6 +30,34 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+func TestService_waitForBackfill(t *testing.T) {
+	slasherDB := dbtest.SetupSlasherDB(t)
+	hook := logTest.NewGlobal()
+
+	beaconState, err := testutil.NewBeaconState()
+	require.NoError(t, err)
+	currentSlot := types.Slot(4)
+	require.NoError(t, beaconState.SetSlot(currentSlot))
+	mockChain := &mock.ChainService{
+		State: beaconState,
+		Slot:  &currentSlot,
+	}
+
+	srv, err := New(context.Background(), &ServiceConfig{
+		IndexedAttestationsFeed: new(event.Feed),
+		BeaconBlockHeadersFeed:  new(event.Feed),
+		StateNotifier:           &mock.MockStateNotifier{},
+		Database:                slasherDB,
+		HeadStateFetcher:        mockChain,
+		SyncChecker:             &mockSync.Sync{IsSyncing: false},
+	})
+	require.NoError(t, err)
+
+	srv.waitForBackfill()
+	require.LogsContain(t, hook, "hello")
+	require.Equal(t, 1, 2)
+}
+
 func TestService_StartStop_ChainStartEvent(t *testing.T) {
 	slasherDB := dbtest.SetupSlasherDB(t)
 	hook := logTest.NewGlobal()

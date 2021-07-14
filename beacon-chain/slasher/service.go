@@ -6,11 +6,14 @@ package slasher
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/blockchain"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/feed"
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/db"
 	"github.com/prysmaticlabs/prysm/beacon-chain/operations/slashings"
 	"github.com/prysmaticlabs/prysm/beacon-chain/state/stategen"
@@ -114,12 +117,51 @@ func (s *Service) run() {
 
 	s.waitForSync(s.genesisTime)
 
+	s.waitForBackfill()
+
 	log.Info("Completed chain sync, starting slashing detection")
 	go s.processQueuedAttestations(s.ctx, s.slotTicker.C())
 	go s.processQueuedBlocks(s.ctx, s.slotTicker.C())
 	go s.receiveAttestations(s.ctx)
 	go s.receiveBlocks(s.ctx)
 	go s.pruneSlasherData(s.ctx, s.slotTicker.C())
+}
+
+func (s *Service) waitForBackfill() {
+	wssPeriod := types.Epoch(4096)
+	headSlot := s.serviceCfg.HeadStateFetcher.HeadSlot()
+	headEpoch := helpers.SlotToEpoch(headSlot)
+	lookbackPeriod := headEpoch
+	if lookbackPeriod > 4096 {
+		lookbackPeriod = lookbackPeriod - wssPeriod
+	}
+	for {
+		currentEpoch := slotutil.EpochsSinceGenesis(s.genesisTime)
+
+		// If we have no difference between the max epoch
+		// we have detected for slasher and the current epoch
+		// on the clock, then we can exiit the loop.
+		diff, err := currentEpoch.SafeSub(uint64(lookbackPeriod))
+		if err != nil {
+			log.WithError(err).Error("Could not subtract epochs")
+			return
+		}
+		if diff == 0 {
+			break
+		}
+		fmt.Println("waiting")
+		time.Sleep(time.Second)
+		//// We set the max epoch for slasher to the current
+		//// epoch on the clock for backfilling.
+		//maxEpoch := currentEpoch
+
+		//slasher.backfill(lookbackEpochs, maxEpoch)
+
+		//// After backfilling, we set the lowest epoch for backfilling
+		//// to be the max epoch we have completed backfill to.
+		//lookbackEpoch = maxEpoch
+	}
+
 }
 
 // Stop the slasher service.
