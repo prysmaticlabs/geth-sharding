@@ -39,7 +39,7 @@ var HealthzCheck = e2etypes.Evaluator{
 
 // FinishedSyncing returns whether the beacon node with the given rpc port has finished syncing.
 var FinishedSyncing = e2etypes.Evaluator{
-	Name:       "finished_syncing",
+	Name:       "finished_syncing_%d",
 	Policy:     policies.AllEpochs,
 	Evaluation: finishedSyncing,
 }
@@ -47,7 +47,7 @@ var FinishedSyncing = e2etypes.Evaluator{
 // AllNodesHaveSameHead ensures all nodes have the same head epoch. Checks finality and justification as well.
 // Not checking head block root as it may change irregularly for the validator connected nodes.
 var AllNodesHaveSameHead = e2etypes.Evaluator{
-	Name:       "all_nodes_have_same_head",
+	Name:       "all_nodes_have_same_head_%d",
 	Policy:     policies.AllEpochs,
 	Evaluation: allNodesHaveSameHead,
 }

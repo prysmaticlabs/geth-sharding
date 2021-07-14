@@ -20,32 +20,40 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// InjectDoubleVote broadcasts a double vote into the beacon node pool for the slasher to detect.
-var InjectDoubleVote = e2eTypes.Evaluator{
-	Name:       "inject_double_vote_%d",
-	Policy:     policies.OnEpoch(1),
-	Evaluation: insertDoubleAttestationIntoPool,
+// InjectDoubleVoteOnEpoch broadcasts a double vote into the beacon node pool for the slasher to detect.
+var InjectDoubleVoteOnEpoch = func(n types.Epoch) e2eTypes.Evaluator {
+	return e2eTypes.Evaluator{
+		Name:       "inject_double_vote_%d",
+		Policy:     policies.OnEpoch(n),
+		Evaluation: insertDoubleAttestationIntoPool,
+	}
 }
 
-// ProposeDoubleBlock broadcasts a double block to the beacon node for the slasher to detect.
-var ProposeDoubleBlock = e2eTypes.Evaluator{
-	Name:       "propose_double_block_%d",
-	Policy:     policies.OnEpoch(1),
-	Evaluation: proposeDoubleBlock,
+// InjectDoubleBlockOnEpoch proposes a double block to the beacon node for the slasher to detect.
+var InjectDoubleBlockOnEpoch = func(n types.Epoch) e2eTypes.Evaluator {
+	return e2eTypes.Evaluator{
+		Name:       "inject_double_block_%d",
+		Policy:     policies.OnEpoch(n),
+		Evaluation: proposeDoubleBlock,
+	}
 }
 
-// ValidatorsSlashed ensures the expected amount of validators are slashed.
-var ValidatorsSlashed = e2eTypes.Evaluator{
-	Name:       "validators_slashed_epoch_%d",
-	Policy:     policies.AfterNthEpoch(2),
-	Evaluation: validatorsSlashed,
+// ValidatorsSlashedAfterEpoch ensures the expected amount of validators are slashed.
+var ValidatorsSlashedAfterEpoch = func(n types.Epoch) e2eTypes.Evaluator {
+	return e2eTypes.Evaluator{
+		Name:       "validators_slashed_epoch_%d",
+		Policy:     policies.AfterNthEpoch(n),
+		Evaluation: validatorsSlashed,
+	}
 }
 
-// SlashedValidatorsLoseBalance checks if the validators slashed lose the right balance.
-var SlashedValidatorsLoseBalance = e2eTypes.Evaluator{
-	Name:       "slashed_validators_lose_valance_epoch_%d",
-	Policy:     policies.AfterNthEpoch(4),
-	Evaluation: validatorsLoseBalance,
+// SlashedValidatorsLoseBalanceAfterEpoch checks if the validators slashed lose the right balance.
+var SlashedValidatorsLoseBalanceAfterEpoch = func(n types.Epoch) e2eTypes.Evaluator {
+	return e2eTypes.Evaluator{
+		Name:       "slashed_validators_lose_valance_epoch_%d",
+		Policy:     policies.AfterNthEpoch(n),
+		Evaluation: validatorsLoseBalance,
+	}
 }
 
 var slashedIndices []uint64

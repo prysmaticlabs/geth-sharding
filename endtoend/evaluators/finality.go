@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	ethtypes "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/endtoend/policies"
 	"github.com/prysmaticlabs/prysm/endtoend/types"
 	eth "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
@@ -14,10 +15,12 @@ import (
 
 // FinalizationOccurs is an evaluator to make sure finalization is performing as it should.
 // Requires to be run after at least 4 epochs have passed.
-var FinalizationOccurs = types.Evaluator{
-	Name:       "finalizes_at_epoch_%d",
-	Policy:     policies.AfterNthEpoch(3),
-	Evaluation: finalizationOccurs,
+var FinalizationOccurs = func(epoch ethtypes.Epoch) types.Evaluator {
+	return types.Evaluator{
+		Name:       "finalizes_at_epoch_%d",
+		Policy:     policies.AfterNthEpoch(epoch),
+		Evaluation: finalizationOccurs,
+	}
 }
 
 func finalizationOccurs(conns ...*grpc.ClientConn) error {

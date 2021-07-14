@@ -17,7 +17,6 @@ import (
 	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/state"
 	"github.com/prysmaticlabs/prysm/endtoend/components"
-	ev "github.com/prysmaticlabs/prysm/endtoend/evaluators"
 	"github.com/prysmaticlabs/prysm/endtoend/helpers"
 	e2e "github.com/prysmaticlabs/prysm/endtoend/params"
 	e2etypes "github.com/prysmaticlabs/prysm/endtoend/types"
@@ -219,6 +218,34 @@ func (r *testRunner) runEvaluators(conns []*grpc.ClientConn, tickingStartTime ti
 	return nil
 }
 
+// runSyncEvaluators executes assigned evaluators for synced beacon nodes.
+func (r *testRunner) runSyncEvaluators(conns []*grpc.ClientConn, tickingStartTime time.Time) error {
+	t, config := r.t, r.config
+	secondsPerEpoch := uint64(params.BeaconConfig().SlotsPerEpoch.Mul(params.BeaconConfig().SecondsPerSlot))
+	ticker := slotutil.NewEpochTicker(tickingStartTime, secondsPerEpoch)
+	for currentEpoch := range ticker.C() {
+		for _, evaluator := range config.PostSyncEvaluators {
+			// Only run if the policy says so.
+			if !evaluator.Policy(currentEpoch) {
+				continue
+			}
+			t.Run(fmt.Sprintf(evaluator.Name, currentEpoch), func(t *testing.T) {
+				err := evaluator.Evaluation(conns...)
+				assert.NoError(t, err, "Evaluation failed for epoch %d: %v", currentEpoch, err)
+			})
+		}
+
+		if t.Failed() || currentEpoch >= types.Epoch(config.EpochsToRunPostSync)-1 {
+			ticker.Done()
+			if t.Failed() {
+				return errors.New("test failed")
+			}
+			break
+		}
+	}
+	return nil
+}
+
 // testDeposits runs tests when config.TestDeposits is enabled.
 func (r *testRunner) testDeposits(ctx context.Context, g *errgroup.Group,
 	eth1Node *components.Eth1Node, requiredNodes []e2etypes.ComponentRunner) {
@@ -244,7 +271,7 @@ func (r *testRunner) testBeaconChainSync(ctx context.Context, g *errgroup.Group,
 	conns []*grpc.ClientConn, tickingStartTime time.Time, enr string) error {
 	t, config := r.t, r.config
 	index := e2e.TestParams.BeaconNodeCount
-	syncBeaconNode := components.NewBeaconNode(config, index, enr)
+	syncBeaconNode := components.NewBeaconNode(config, index, enr, true) // is sync node.
 	g.Go(func() error {
 		return syncBeaconNode.Start(ctx)
 	})
@@ -273,12 +300,8 @@ func (r *testRunner) testBeaconChainSync(ctx context.Context, g *errgroup.Group,
 
 	// Sleep a slot to make sure the synced state is made.
 	time.Sleep(time.Duration(params.BeaconConfig().SecondsPerSlot) * time.Second)
-	syncEvaluators := []e2etypes.Evaluator{ev.FinishedSyncing, ev.AllNodesHaveSameHead}
-	for _, evaluator := range syncEvaluators {
-		t.Run(evaluator.Name, func(t *testing.T) {
-			assert.NoError(t, evaluator.Evaluation(conns...), "Evaluation failed for sync node")
-		})
+	if err := r.runEvaluators(conns, tickingStartTime); err != nil {
+		return err
 	}
-
-	return nil
+	return r.runSyncEvaluators(conns, tickingStartTime)
 }

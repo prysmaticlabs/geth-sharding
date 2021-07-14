@@ -9,8 +9,9 @@ go_test(
     srcs = [
         "endtoend_test.go",
         "minimal_e2e_test.go",
-        "minimal_slashing_e2e_test.go",
+        "slasher_e2e_test.go",
         "slasher_simulator_e2e_test.go",
+        "slasher_sync_e2e_test.go",
     ],
     args = ["-test.v"],
     data = [

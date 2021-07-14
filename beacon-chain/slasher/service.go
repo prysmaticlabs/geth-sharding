@@ -75,6 +75,10 @@ func New(ctx context.Context, srvCfg *ServiceConfig) (*Service, error) {
 // Start listening for received indexed attestations and blocks
 // and perform slashing detection on them.
 func (s *Service) Start() {
+	go s.run()
+}
+
+func (s *Service) run() {
 	stateChannel := make(chan *feed.Event, 1)
 	stateSub := s.serviceCfg.StateNotifier.StateFeed().Subscribe(stateChannel)
 	stateEvent := <-stateChannel
@@ -108,24 +112,8 @@ func (s *Service) Start() {
 	secondsPerSlot := params.BeaconConfig().SecondsPerSlot
 	s.slotTicker = slotutil.NewSlotTicker(s.genesisTime, secondsPerSlot)
 
-Loop:
-	for {
-		select {
-		case <-s.ctx.Done():
-			break Loop
-		case <-s.slotTicker.C():
-			// If node is still syncing, do not operate slasher.
-			if s.serviceCfg.SyncChecker.Syncing() {
-				continue
-			}
-			break Loop
-		default:
-			// If we are in the first slot or synced, exit the loop.
-			if slotutil.SlotsSinceGenesis(s.genesisTime) == 0 || !s.serviceCfg.SyncChecker.Syncing() {
-				break Loop
-			}
-		}
-	}
+	s.waitForSync(s.genesisTime)
+
 	log.Info("Completed chain sync, starting slashing detection")
 	go s.processQueuedAttestations(s.ctx, s.slotTicker.C())
 	go s.processQueuedBlocks(s.ctx, s.slotTicker.C())
@@ -146,4 +134,22 @@ func (s *Service) Stop() error {
 // Status of the slasher service.
 func (s *Service) Status() error {
 	return nil
+}
+
+func (s *Service) waitForSync(genesisTime time.Time) {
+	if slotutil.SlotsSinceGenesis(genesisTime) == 0 || !s.serviceCfg.SyncChecker.Syncing() {
+		return
+	}
+	for {
+		select {
+		case <-s.slotTicker.C():
+			// If node is still syncing, do not operate slasher.
+			if s.serviceCfg.SyncChecker.Syncing() {
+				continue
+			}
+			return
+		case <-s.ctx.Done():
+			return
+		}
+	}
 }

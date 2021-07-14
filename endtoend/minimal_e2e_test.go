@@ -41,6 +41,7 @@ func e2eMinimal(t *testing.T, usePrysmSh bool) {
 		},
 		ValidatorFlags:      []string{},
 		EpochsToRun:         uint64(epochsToRun),
+		EpochsToRunPostSync: 1,
 		TestSync:            true,
 		TestDeposits:        true,
 		UsePrysmShValidator: usePrysmSh,
@@ -50,8 +51,8 @@ func e2eMinimal(t *testing.T, usePrysmSh bool) {
 			ev.HealthzCheck,
 			ev.MetricsCheck,
 			ev.ValidatorsAreActive,
-			ev.ValidatorsParticipating,
-			ev.FinalizationOccurs,
+			ev.ValidatorsParticipatingAtEpoch(2),
+			ev.FinalizationOccurs(3),
 			ev.ProcessesDepositsInBlocks,
 			ev.VerifyBlockGraffiti,
 			ev.ActivatesDepositedValidators,
@@ -61,6 +62,10 @@ func e2eMinimal(t *testing.T, usePrysmSh bool) {
 			ev.ValidatorsVoteWithTheMajority,
 			ev.ColdStateCheckpoint,
 			ev.ApiVerifyValidators,
+		},
+		PostSyncEvaluators: []types.Evaluator{
+			ev.FinishedSyncing,
+			ev.AllNodesHaveSameHead,
 		},
 	}
 
