@@ -135,18 +135,20 @@ func (s *Service) waitForBackfill() {
 	if lookbackPeriod > 4096 {
 		lookbackPeriod = lookbackPeriod - wssPeriod
 	}
+	fmt.Printf("Head epoch %d, lookback %d\n", headEpoch, lookbackPeriod)
 	for {
 		currentEpoch := slotutil.EpochsSinceGenesis(s.genesisTime)
 
+		diff := currentEpoch
+		if diff > lookbackPeriod {
+			diff = diff - lookbackPeriod
+		}
+		fmt.Println(diff)
 		// If we have no difference between the max epoch
 		// we have detected for slasher and the current epoch
 		// on the clock, then we can exiit the loop.
-		diff, err := currentEpoch.SafeSub(uint64(lookbackPeriod))
-		if err != nil {
-			log.WithError(err).Error("Could not subtract epochs")
-			return
-		}
 		if diff == 0 {
+			fmt.Println("Difference is 0, breaking")
 			break
 		}
 		fmt.Println("waiting")

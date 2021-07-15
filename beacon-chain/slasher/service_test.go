@@ -39,8 +39,9 @@ func TestService_waitForBackfill(t *testing.T) {
 	currentSlot := types.Slot(4)
 	require.NoError(t, beaconState.SetSlot(currentSlot))
 	mockChain := &mock.ChainService{
-		State: beaconState,
-		Slot:  &currentSlot,
+		State:   beaconState,
+		Slot:    &currentSlot,
+		Genesis: time.Now(),
 	}
 
 	srv, err := New(context.Background(), &ServiceConfig{
