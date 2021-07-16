@@ -55,6 +55,7 @@ func TestService_waitForBackfill(t *testing.T) {
 		BeaconBlockHeadersFeed:  new(event.Feed),
 		StateNotifier:           &mock.MockStateNotifier{},
 		Database:                slasherDB,
+		BeaconDatabase:          beaconDB,
 		HeadStateFetcher:        mockChain,
 		SyncChecker:             &mockSync.Sync{IsSyncing: false},
 	})
@@ -75,7 +76,8 @@ func TestService_waitForBackfill(t *testing.T) {
 		copy(sig[:], fmt.Sprintf("%d", i))
 		blk := testutil.HydrateSignedBeaconBlock(&ethpb.SignedBeaconBlock{
 			Block: testutil.HydrateBeaconBlock(&ethpb.BeaconBlock{
-				Slot: types.Slot(i),
+				Slot:          types.Slot(i),
+				ProposerIndex: types.ValidatorIndex(i),
 			}),
 			Signature: sig,
 		})
