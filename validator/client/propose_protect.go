@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	"github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
 	"github.com/prysmaticlabs/prysm/shared/blockutil"
 	"github.com/prysmaticlabs/prysm/shared/featureconfig"
 	"github.com/prysmaticlabs/prysm/shared/params"
@@ -68,7 +69,8 @@ func (v *validator) slashableProposalCheck(
 			}
 			return errors.New(failedBlockSignExternalErr)
 		}
-		sbh, err := blockutil.SignedBeaconBlockHeaderFromBlock(signedBlock)
+		wrap := wrapper.WrappedPhase0SignedBeaconBlock(signedBlock)
+		sbh, err := blockutil.SignedBeaconBlockHeaderFromBlock(wrap)
 		if err != nil {
 			return errors.Wrap(err, "failed to get block header from block")
 		}
@@ -87,7 +89,8 @@ func (v *validator) slashableProposalCheck(
 	}
 
 	if featureconfig.Get().NewRemoteSlasherProtection {
-		blockHdr, err := blockutil.SignedBeaconBlockHeaderFromBlock(signedBlock)
+		wrap := wrapper.WrappedPhase0SignedBeaconBlock(signedBlock)
+		blockHdr, err := blockutil.SignedBeaconBlockHeaderFromBlock(wrap)
 		if err != nil {
 			return errors.Wrap(err, "failed to get block header from block")
 		}

@@ -8,6 +8,7 @@ import (
 	"context"
 	"time"
 
+	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/blockchain"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/feed"
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
@@ -28,6 +29,7 @@ type ServiceConfig struct {
 	IndexedAttestationsFeed *event.Feed
 	BeaconBlockHeadersFeed  *event.Feed
 	Database                db.SlasherDatabase
+	BeaconDatabase          db.Database
 	StateNotifier           statefeed.Notifier
 	AttestationStateFetcher blockchain.AttestationStateFetcher
 	StateGen                stategen.StateManager
@@ -53,7 +55,9 @@ type Service struct {
 	blksQueue              *blocksQueue
 	ctx                    context.Context
 	cancel                 context.CancelFunc
-	slotTicker             *slotutil.SlotTicker
+	pruningTicker          *slotutil.SlotTicker
+	blocksTicker           *slotutil.SlotTicker
+	attsTicker             *slotutil.SlotTicker
 	genesisTime            time.Time
 }
 
@@ -110,23 +114,36 @@ func (s *Service) run() {
 
 	stateSub.Unsubscribe()
 	secondsPerSlot := params.BeaconConfig().SecondsPerSlot
-	s.slotTicker = slotutil.NewSlotTicker(s.genesisTime, secondsPerSlot)
 
-	s.waitForSync(s.genesisTime)
+	log.Info("Waiting for chain to complete initial sync")
+	s.waitForSync(s.genesisTime, slotutil.NewSlotTicker(s.genesisTime, secondsPerSlot).C())
 
-	log.Info("Completed chain sync, starting slashing detection")
-	go s.processQueuedAttestations(s.ctx, s.slotTicker.C())
-	go s.processQueuedBlocks(s.ctx, s.slotTicker.C())
+	log.Info("Backfilling any missing data before starting slasher listener")
+	s.waitForDataBackfill(s.params.historyLength)
+
+	log.Info("Completed data backfill and chain sync, starting slashing detection")
+
+	s.blocksTicker = slotutil.NewSlotTicker(s.genesisTime, secondsPerSlot)
+	s.attsTicker = slotutil.NewSlotTicker(s.genesisTime, secondsPerSlot)
+	s.pruningTicker = slotutil.NewSlotTicker(s.genesisTime, secondsPerSlot)
+	go s.processQueuedAttestations(s.ctx, s.attsTicker.C())
+	go s.processQueuedBlocks(s.ctx, s.blocksTicker.C())
 	go s.receiveAttestations(s.ctx)
 	go s.receiveBlocks(s.ctx)
-	go s.pruneSlasherData(s.ctx, s.slotTicker.C())
+	go s.pruneSlasherData(s.ctx, s.pruningTicker.C())
 }
 
 // Stop the slasher service.
 func (s *Service) Stop() error {
 	s.cancel()
-	if s.slotTicker != nil {
-		s.slotTicker.Done()
+	if s.attsTicker != nil {
+		s.attsTicker.Done()
+	}
+	if s.blocksTicker != nil {
+		s.blocksTicker.Done()
+	}
+	if s.pruningTicker != nil {
+		s.pruningTicker.Done()
 	}
 	return nil
 }
@@ -136,13 +153,13 @@ func (s *Service) Status() error {
 	return nil
 }
 
-func (s *Service) waitForSync(genesisTime time.Time) {
+func (s *Service) waitForSync(genesisTime time.Time, slotTicker <-chan types.Slot) {
 	if slotutil.SlotsSinceGenesis(genesisTime) == 0 || !s.serviceCfg.SyncChecker.Syncing() {
 		return
 	}
 	for {
 		select {
-		case <-s.slotTicker.C():
+		case <-slotTicker:
 			// If node is still syncing, do not operate slasher.
 			if s.serviceCfg.SyncChecker.Syncing() {
 				continue

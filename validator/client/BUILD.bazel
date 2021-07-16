@@ -23,6 +23,7 @@ go_library(
         "//beacon-chain/core/helpers:go_default_library",
         "//proto/beacon/rpc/v1:go_default_library",
         "//proto/eth/v1alpha1:go_default_library",
+        "//proto/eth/v1alpha1/wrapper:go_default_library",
         "//proto/validator/accounts/v2:go_default_library",
         "//shared/blockutil:go_default_library",
         "//shared/bls:go_default_library",

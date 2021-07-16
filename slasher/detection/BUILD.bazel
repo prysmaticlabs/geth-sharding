@@ -13,6 +13,7 @@ go_library(
     visibility = ["//slasher:__subpackages__"],
     deps = [
         "//proto/eth/v1alpha1:go_default_library",
+        "//proto/eth/v1alpha1/wrapper:go_default_library",
         "//proto/slashing:go_default_library",
         "//shared/attestationutil:go_default_library",
         "//shared/blockutil:go_default_library",

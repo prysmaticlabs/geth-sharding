@@ -2,6 +2,7 @@ package slasher
 
 import (
 	"context"
+	"errors"
 
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/blocks"
 	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
@@ -83,6 +84,9 @@ func (s *Service) verifyBlockSignature(ctx context.Context, header *ethpb.Signed
 	if err != nil {
 		return err
 	}
+	if parentState == nil || parentState.IsNil() {
+		return errors.New("could not verify block signature as parent state is nil")
+	}
 	return blocks.VerifyBlockHeaderSignature(parentState, header)
 }
 
@@ -90,6 +94,9 @@ func (s *Service) verifyAttSignature(ctx context.Context, att *ethpb.IndexedAtte
 	preState, err := s.serviceCfg.AttestationStateFetcher.AttestationTargetState(ctx, att.Data.Target)
 	if err != nil {
 		return err
+	}
+	if preState == nil || preState.IsNil() {
+		return errors.New("could not verify attestation signature as pre-state is nil")
 	}
 	return blocks.VerifyIndexedAttestation(ctx, preState, att)
 }

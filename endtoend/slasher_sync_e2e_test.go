@@ -33,7 +33,7 @@ func TestEndToEnd_Slasher_Sync_MinimalConfig(t *testing.T) {
 			ev.ValidatorsAreActive,
 			ev.ValidatorsParticipatingAtEpoch(2),
 			ev.FinalizationOccurs(3),
-			ev.InjectDoubleVoteOnEpoch(3),
+			//ev.InjectDoubleVoteOnEpoch(3),
 			ev.InjectDoubleBlockOnEpoch(3),
 		},
 		PostSyncEvaluators: []types.Evaluator{

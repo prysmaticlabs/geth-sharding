@@ -599,6 +599,7 @@ func (b *BeaconNode) registerSlasherService() error {
 		IndexedAttestationsFeed: b.slasherAttestationsFeed,
 		BeaconBlockHeadersFeed:  b.slasherBlockHeadersFeed,
 		Database:                b.slasherDB,
+		BeaconDatabase:          b.db,
 		StateNotifier:           b,
 		AttestationStateFetcher: chainService,
 		StateGen:                b.stateGen,
