@@ -13,6 +13,7 @@ import (
 	dbtest "github.com/prysmaticlabs/prysm/beacon-chain/db/testing"
 	mockSync "github.com/prysmaticlabs/prysm/beacon-chain/sync/initial-sync/testing"
 	"github.com/prysmaticlabs/prysm/shared/event"
+	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/slotutil"
 	"github.com/prysmaticlabs/prysm/shared/testutil"
 	"github.com/prysmaticlabs/prysm/shared/testutil/require"
@@ -39,9 +40,8 @@ func TestService_waitForBackfill(t *testing.T) {
 	currentSlot := types.Slot(4)
 	require.NoError(t, beaconState.SetSlot(currentSlot))
 	mockChain := &mock.ChainService{
-		State:   beaconState,
-		Slot:    &currentSlot,
-		Genesis: time.Now(),
+		State: beaconState,
+		Slot:  &currentSlot,
 	}
 
 	srv, err := New(context.Background(), &ServiceConfig{
@@ -53,6 +53,13 @@ func TestService_waitForBackfill(t *testing.T) {
 		SyncChecker:             &mockSync.Sync{IsSyncing: false},
 	})
 	require.NoError(t, err)
+
+	// Set genesis time to a custon number of epochs ago.
+	numEpochs := uint64(8)
+	secondsPerSlot := params.BeaconConfig().SecondsPerSlot
+	secondsPerEpoch := secondsPerSlot * uint64(params.BeaconConfig().SlotsPerEpoch)
+	totalEpochTimeElapsed := numEpochs * secondsPerEpoch
+	srv.genesisTime = time.Now().Add(-time.Duration(totalEpochTimeElapsed) * time.Second)
 
 	srv.waitForBackfill()
 	require.LogsContain(t, hook, "hello")

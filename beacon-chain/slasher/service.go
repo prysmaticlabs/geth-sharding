@@ -128,11 +128,11 @@ func (s *Service) run() {
 }
 
 func (s *Service) waitForBackfill() {
-	wssPeriod := types.Epoch(4096)
+	wssPeriod := types.Epoch(4)
 	headSlot := s.serviceCfg.HeadStateFetcher.HeadSlot()
 	headEpoch := helpers.SlotToEpoch(headSlot)
 	lookbackPeriod := headEpoch
-	if lookbackPeriod > 4096 {
+	if lookbackPeriod > 4 {
 		lookbackPeriod = lookbackPeriod - wssPeriod
 	}
 	fmt.Printf("Head epoch %d, lookback %d\n", headEpoch, lookbackPeriod)
@@ -143,27 +143,29 @@ func (s *Service) waitForBackfill() {
 		if diff > lookbackPeriod {
 			diff = diff - lookbackPeriod
 		}
-		fmt.Println(diff)
-		// If we have no difference between the max epoch
-		// we have detected for slasher and the current epoch
-		// on the clock, then we can exiit the loop.
+
+		// If we have no difference between the max epoch we have detected for
+		// slasher and the current epoch on the clock, then we can exiit the loop.
 		if diff == 0 {
-			fmt.Println("Difference is 0, breaking")
 			break
 		}
-		fmt.Println("waiting")
-		time.Sleep(time.Second)
-		//// We set the max epoch for slasher to the current
-		//// epoch on the clock for backfilling.
-		//maxEpoch := currentEpoch
 
-		//slasher.backfill(lookbackEpochs, maxEpoch)
+		// We set the max epoch for slasher to the current epoch on the clock for backfilling.
+		maxEpoch := currentEpoch
 
-		//// After backfilling, we set the lowest epoch for backfilling
-		//// to be the max epoch we have completed backfill to.
-		//lookbackEpoch = maxEpoch
+		s.backfill(lookbackPeriod, maxEpoch)
+
+		// After backfilling, we set the lowest epoch for backfilling to be the
+		// max epoch we have completed backfill to.
+		lookbackPeriod = maxEpoch
 	}
+}
 
+func (s *Service) backfill(start, end types.Epoch) {
+	fmt.Printf("Backfilling from epoch %d to %d\n", start, end)
+	for i := start; i < end; i++ {
+	}
+	time.Sleep(time.Second)
 }
 
 // Stop the slasher service.
