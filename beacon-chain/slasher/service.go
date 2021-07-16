@@ -117,7 +117,7 @@ func (s *Service) run() {
 
 	s.waitForSync(s.genesisTime)
 
-	s.waitForBackfill()
+	s.waitForDataBackfill()
 
 	log.Info("Completed chain sync, starting slashing detection")
 	go s.processQueuedAttestations(s.ctx, s.slotTicker.C())
@@ -127,25 +127,31 @@ func (s *Service) run() {
 	go s.pruneSlasherData(s.ctx, s.slotTicker.C())
 }
 
-func (s *Service) waitForBackfill() {
+func (s *Service) waitForDataBackfill() {
+	// The lowest epoch we need to backfill for slasher is based on the
+	// head epoch minus the weak subjectivity period.
 	wssPeriod := types.Epoch(4)
 	headSlot := s.serviceCfg.HeadStateFetcher.HeadSlot()
 	headEpoch := helpers.SlotToEpoch(headSlot)
-	lookbackPeriod := headEpoch
-	if lookbackPeriod > 4 {
-		lookbackPeriod = lookbackPeriod - wssPeriod
+	lowestEpoch := headEpoch
+	if lowestEpoch > 4 {
+		lowestEpoch = lowestEpoch - wssPeriod
 	}
-	fmt.Printf("Head epoch %d, lookback %d\n", headEpoch, lookbackPeriod)
+
+	log.Infof("Beginning slasher data backfill from epoch %d to %d", lowestEpoch, headEpoch)
+	start := time.Now()
+	s.backfill(lowestEpoch, headEpoch)
+	log.Infof("Finished backfilling range with time elapsed %v", time.Since(start))
+	lowestEpoch = headEpoch
+
 	for {
-		currentEpoch := slotutil.EpochsSinceGenesis(s.genesisTime)
-
-		diff := currentEpoch
-		if diff > lookbackPeriod {
-			diff = diff - lookbackPeriod
-		}
-
 		// If we have no difference between the max epoch we have detected for
-		// slasher and the current epoch on the clock, then we can exiit the loop.
+		// slasher and the current epoch on the clock, then we can exit the loop.
+		currentEpoch := slotutil.EpochsSinceGenesis(s.genesisTime)
+		diff := currentEpoch
+		if diff >= lowestEpoch {
+			diff = diff - lowestEpoch
+		}
 		if diff == 0 {
 			break
 		}
@@ -153,11 +159,14 @@ func (s *Service) waitForBackfill() {
 		// We set the max epoch for slasher to the current epoch on the clock for backfilling.
 		maxEpoch := currentEpoch
 
-		s.backfill(lookbackPeriod, maxEpoch)
+		log.Infof("Beginning slasher data backfill from epoch %d to %d", lowestEpoch, maxEpoch)
+		start := time.Now()
+		s.backfill(lowestEpoch, maxEpoch)
+		log.Infof("Finished backfilling range with time elapsed %v", time.Since(start))
 
 		// After backfilling, we set the lowest epoch for backfilling to be the
 		// max epoch we have completed backfill to.
-		lookbackPeriod = maxEpoch
+		lowestEpoch = maxEpoch
 	}
 }
 

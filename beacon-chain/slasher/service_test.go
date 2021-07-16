@@ -62,8 +62,7 @@ func TestService_waitForBackfill(t *testing.T) {
 	srv.genesisTime = time.Now().Add(-time.Duration(totalEpochTimeElapsed) * time.Second)
 
 	srv.waitForBackfill()
-	require.LogsContain(t, hook, "hello")
-	require.Equal(t, 1, 2)
+	require.LogsContain(t, hook, "Beginning slasher data backfill from epoch 0 to 8")
 }
 
 func TestService_StartStop_ChainStartEvent(t *testing.T) {
