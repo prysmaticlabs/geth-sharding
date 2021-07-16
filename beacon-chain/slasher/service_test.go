@@ -59,7 +59,9 @@ func TestService_StartStop_ChainStartEvent(t *testing.T) {
 		Data: &statefeed.ChainStartedData{StartTime: time.Now()},
 	})
 	time.Sleep(time.Millisecond * 100)
-	srv.slotTicker = &slotutil.SlotTicker{}
+	srv.blocksTicker = &slotutil.SlotTicker{}
+	srv.attsTicker = &slotutil.SlotTicker{}
+	srv.pruningTicker = &slotutil.SlotTicker{}
 	require.NoError(t, srv.Stop())
 	require.NoError(t, srv.Status())
 	require.LogsContain(t, hook, "received chain start event")
@@ -92,7 +94,9 @@ func TestService_StartStop_ChainAlreadyInitialized(t *testing.T) {
 		Data: &statefeed.InitializedData{StartTime: time.Now()},
 	})
 	time.Sleep(time.Millisecond * 100)
-	srv.slotTicker = &slotutil.SlotTicker{}
+	srv.blocksTicker = &slotutil.SlotTicker{}
+	srv.attsTicker = &slotutil.SlotTicker{}
+	srv.pruningTicker = &slotutil.SlotTicker{}
 	require.NoError(t, srv.Stop())
 	require.NoError(t, srv.Status())
 	require.LogsContain(t, hook, "chain already initialized")

@@ -118,14 +118,16 @@ func (s *Service) backfill(start, end types.Epoch) error {
 	if err != nil {
 		return err
 	}
+	log.Debugf("Found %d proposer slashing(s)", len(propSlashings))
 	if err := s.processProposerSlashings(s.ctx, propSlashings); err != nil {
 		return err
 	}
-	log.Debugf("Running slashing detection on %d attestations", len(atts))
+	log.Debugf("Running slashing detection on %d attestation(s)", len(atts))
 	attSlashings, err := s.checkSlashableAttestations(s.ctx, atts)
 	if err != nil {
 		return err
 	}
+	log.Debugf("Found %d attester slashing(s)", len(attSlashings))
 	return s.processAttesterSlashings(s.ctx, attSlashings)
 }
 
