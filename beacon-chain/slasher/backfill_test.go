@@ -15,6 +15,7 @@ import (
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
 	"github.com/prysmaticlabs/prysm/proto/interfaces"
+	"github.com/prysmaticlabs/prysm/shared/bls"
 	"github.com/prysmaticlabs/prysm/shared/event"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/testutil"
@@ -106,6 +107,11 @@ func setupBackfillTest(tb testing.TB, cfg *backfillTestConfig) *Service {
 	blocks := make([]interfaces.SignedBeaconBlock, 0, numSlots)
 
 	// Setup validators in the beacon state for a full test setup.
+	numValidators := numSlots
+	validators, balances, privKeys := setupValidators(tb, numValidators)
+	require.NoError(tb, beaconState.SetValidators(validators))
+	require.NoError(tb, beaconState.SetBalances(balances))
+	_ = privKeys
 
 	for i := uint64(0); i < numSlots; i++ {
 		// Create a realistic looking block for the slot.
@@ -160,4 +166,20 @@ func setupBackfillTest(tb testing.TB, cfg *backfillTestConfig) *Service {
 	return srv
 }
 
-func item() {}
+func setupValidators(t testing.TB, count uint64) ([]*ethpb.Validator, []uint64, []bls.SecretKey) {
+	balances := make([]uint64, count)
+	validators := make([]*ethpb.Validator, 0, count)
+	secretKeys := make([]bls.SecretKey, 0, count)
+	for i := 0; i < count; i++ {
+		privKey, err := bls.RandKey()
+		require.NoError(t, err)
+		secretKeys[i] = privKey
+		pubKey := privKey.PublicKey().Marshal()
+		balances[i] = uint64(i)
+		validators = append(validators, &ethpb.Validator{
+			PublicKey:             pubKey,
+			WithdrawalCredentials: make([]byte, 32),
+		})
+	}
+	return validators, balances, secretKeys
+}
