@@ -2,6 +2,7 @@ package slasher
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"testing"
 	"time"
@@ -12,6 +13,9 @@ import (
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
 	dbtest "github.com/prysmaticlabs/prysm/beacon-chain/db/testing"
 	mockSync "github.com/prysmaticlabs/prysm/beacon-chain/sync/initial-sync/testing"
+	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	"github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
+	"github.com/prysmaticlabs/prysm/proto/interfaces"
 	"github.com/prysmaticlabs/prysm/shared/event"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/slotutil"
@@ -32,6 +36,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestService_waitForBackfill(t *testing.T) {
+	beaconDB := dbtest.SetupDB(t)
 	slasherDB := dbtest.SetupSlasherDB(t)
 	hook := logTest.NewGlobal()
 
@@ -44,7 +49,8 @@ func TestService_waitForBackfill(t *testing.T) {
 		Slot:  &currentSlot,
 	}
 
-	srv, err := New(context.Background(), &ServiceConfig{
+	ctx := context.Background()
+	srv, err := New(ctx, &ServiceConfig{
 		IndexedAttestationsFeed: new(event.Feed),
 		BeaconBlockHeadersFeed:  new(event.Feed),
 		StateNotifier:           &mock.MockStateNotifier{},
@@ -54,14 +60,31 @@ func TestService_waitForBackfill(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Set genesis time to a custon number of epochs ago.
+	// Set genesis time to a custom number of epochs ago.
 	numEpochs := uint64(8)
 	secondsPerSlot := params.BeaconConfig().SecondsPerSlot
 	secondsPerEpoch := secondsPerSlot * uint64(params.BeaconConfig().SlotsPerEpoch)
 	totalEpochTimeElapsed := numEpochs * secondsPerEpoch
 	srv.genesisTime = time.Now().Add(-time.Duration(totalEpochTimeElapsed) * time.Second)
 
-	srv.waitForBackfill()
+	// Write blocks for every slot from epoch 0 to numEpochs.
+	numSlots := numEpochs * uint64(params.BeaconConfig().SlotsPerEpoch)
+	blocks := make([]interfaces.SignedBeaconBlock, 0, numSlots)
+	for i := uint64(0); i < numSlots; i++ {
+		sig := make([]byte, 96)
+		copy(sig[:], fmt.Sprintf("%d", i))
+		blk := testutil.HydrateSignedBeaconBlock(&ethpb.SignedBeaconBlock{
+			Block: testutil.HydrateBeaconBlock(&ethpb.BeaconBlock{
+				Slot: types.Slot(i),
+			}),
+			Signature: sig,
+		})
+		wrap := wrapper.WrappedPhase0SignedBeaconBlock(blk)
+		blocks = append(blocks, wrap)
+	}
+	require.NoError(t, beaconDB.SaveBlocks(ctx, blocks))
+
+	srv.waitForDataBackfill()
 	require.LogsContain(t, hook, "Beginning slasher data backfill from epoch 0 to 8")
 }
 

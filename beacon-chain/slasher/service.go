@@ -6,7 +6,6 @@ package slasher
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/prysmaticlabs/eth2-types"
@@ -15,10 +14,13 @@ import (
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/db"
+	"github.com/prysmaticlabs/prysm/beacon-chain/db/filters"
 	"github.com/prysmaticlabs/prysm/beacon-chain/operations/slashings"
+	slashertypes "github.com/prysmaticlabs/prysm/beacon-chain/slasher/types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/state/stategen"
 	"github.com/prysmaticlabs/prysm/beacon-chain/sync"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	"github.com/prysmaticlabs/prysm/shared/blockutil"
 	"github.com/prysmaticlabs/prysm/shared/event"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/slotutil"
@@ -31,6 +33,7 @@ type ServiceConfig struct {
 	IndexedAttestationsFeed *event.Feed
 	BeaconBlockHeadersFeed  *event.Feed
 	Database                db.SlasherDatabase
+	BeaconDatabase          db.Database
 	StateNotifier           statefeed.Notifier
 	AttestationStateFetcher blockchain.AttestationStateFetcher
 	StateGen                stategen.StateManager
@@ -115,8 +118,10 @@ func (s *Service) run() {
 	secondsPerSlot := params.BeaconConfig().SecondsPerSlot
 	s.slotTicker = slotutil.NewSlotTicker(s.genesisTime, secondsPerSlot)
 
+	log.Info("Waiting for chain to complete initial sync")
 	s.waitForSync(s.genesisTime)
 
+	log.Info("Backfilling any missing data before starting slasher listener")
 	s.waitForDataBackfill()
 
 	log.Info("Completed chain sync, starting slashing detection")
@@ -170,11 +175,32 @@ func (s *Service) waitForDataBackfill() {
 	}
 }
 
-func (s *Service) backfill(start, end types.Epoch) {
-	fmt.Printf("Backfilling from epoch %d to %d\n", start, end)
-	for i := start; i < end; i++ {
+func (s *Service) backfill(start, end types.Epoch) error {
+	// The max range between start and end is approximately 4096 epochs,
+	// so we perform backfilling in chunks of a set size to reduce impact
+	// on disk reads and writes during the procedure.
+	f := filters.NewFilter().SetStartEpoch(start).SetEndEpoch(end)
+	blocks, roots, err := s.serviceCfg.BeaconDatabase.Blocks(s.ctx, f)
+	if err != nil {
+		return err
 	}
-	time.Sleep(time.Second)
+	headers := make([]*slashertypes.SignedBlockHeaderWrapper, len(blocks))
+	for i, block := range blocks {
+		header, err := blockutil.SignedBeaconBlockHeaderFromBlock(block)
+		if err != nil {
+			return err
+		}
+		headers = append(headers, &slashertypes.SignedBlockHeaderWrapper{
+			SignedBeaconBlockHeader: header,
+			SigningRoot:             roots[i],
+		})
+	}
+	slashings, err := s.detectProposerSlashings(s.ctx, headers)
+	if err != nil {
+		return err
+	}
+	_ = slashings
+	return nil
 }
 
 // Stop the slasher service.

@@ -81,7 +81,8 @@ func (s *Service) validateBeaconBlockPubSub(ctx context.Context, pid peer.ID, ms
 		// Feed the block header to slasher if enabled. This action
 		// is done in the background to avoid adding more load to this critical code path.
 		go func() {
-			blockHeader, err := blockutil.SignedBeaconBlockHeaderFromBlock(rblk)
+			wrap := wrapper.WrappedPhase0SignedBeaconBlock(rblk)
+			blockHeader, err := blockutil.SignedBeaconBlockHeaderFromBlock(wrap)
 			if err != nil {
 				log.WithError(err).WithField("blockSlot", blk.Block().Slot()).Warn("Could not extract block header")
 			}
