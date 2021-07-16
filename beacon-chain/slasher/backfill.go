@@ -1,14 +1,19 @@
 package slasher
 
 import (
+	"context"
 	"time"
 
+	"github.com/pkg/errors"
 	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/db/filters"
 	slashertypes "github.com/prysmaticlabs/prysm/beacon-chain/slasher/types"
+	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
+	"github.com/prysmaticlabs/prysm/proto/interfaces"
 	"github.com/prysmaticlabs/prysm/shared/attestationutil"
 	"github.com/prysmaticlabs/prysm/shared/blockutil"
+	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/slotutil"
 )
 
@@ -20,7 +25,9 @@ func (s *Service) waitForDataBackfill(wssPeriod types.Epoch) {
 	headSlot := s.serviceCfg.HeadStateFetcher.HeadSlot()
 	headEpoch := helpers.SlotToEpoch(headSlot)
 	lowestEpoch := headEpoch
-	if lowestEpoch >= wssPeriod {
+	if lowestEpoch <= wssPeriod {
+		lowestEpoch = 0
+	} else {
 		lowestEpoch = lowestEpoch - wssPeriod
 	}
 
@@ -113,4 +120,15 @@ func (s *Service) backfill(start, end types.Epoch) error {
 	}
 	s.processAttesterSlashings(s.ctx, attSlashings)
 	return nil
+}
+
+func (s *Service) getBlockPreState(ctx context.Context, b interfaces.BeaconBlock) (iface.BeaconState, error) {
+	preState, err := s.serviceCfg.StateGen.StateByRoot(ctx, bytesutil.ToBytes32(b.ParentRoot()))
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not get pre state for slot %d", b.Slot())
+	}
+	if preState == nil || preState.IsNil() {
+		return nil, errors.Wrapf(err, "nil pre state for slot %d", b.Slot())
+	}
+	return preState, nil
 }

@@ -8,18 +8,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/prysm/beacon-chain/blockchain"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/feed"
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
 	"github.com/prysmaticlabs/prysm/beacon-chain/db"
 	"github.com/prysmaticlabs/prysm/beacon-chain/operations/slashings"
-	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
 	"github.com/prysmaticlabs/prysm/beacon-chain/state/stategen"
 	"github.com/prysmaticlabs/prysm/beacon-chain/sync"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
-	"github.com/prysmaticlabs/prysm/proto/interfaces"
-	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/event"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/slotutil"
@@ -143,17 +139,6 @@ func (s *Service) Stop() error {
 // Status of the slasher service.
 func (s *Service) Status() error {
 	return nil
-}
-
-func (s *Service) getBlockPreState(ctx context.Context, b interfaces.BeaconBlock) (iface.BeaconState, error) {
-	preState, err := s.serviceCfg.StateGen.StateByRoot(ctx, bytesutil.ToBytes32(b.ParentRoot()))
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not get pre state for slot %d", b.Slot())
-	}
-	if preState == nil || preState.IsNil() {
-		return nil, errors.Wrapf(err, "nil pre state for slot %d", b.Slot())
-	}
-	return preState, nil
 }
 
 func (s *Service) waitForSync(genesisTime time.Time) {
