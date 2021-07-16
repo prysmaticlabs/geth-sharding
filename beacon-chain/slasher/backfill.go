@@ -33,7 +33,10 @@ func (s *Service) waitForDataBackfill(wssPeriod types.Epoch) {
 
 	log.Infof("Beginning slasher data backfill from epoch %d to %d", lowestEpoch, headEpoch)
 	start := time.Now()
-	s.backfill(lowestEpoch, headEpoch)
+	if err := s.backfill(lowestEpoch, headEpoch); err != nil {
+		log.Error(err)
+		return
+	}
 	log.Infof("Finished backfilling range with time elapsed %v", time.Since(start))
 	lowestEpoch = headEpoch
 
@@ -54,7 +57,10 @@ func (s *Service) waitForDataBackfill(wssPeriod types.Epoch) {
 
 		log.Infof("Beginning slasher data backfill from epoch %d to %d", lowestEpoch, maxEpoch)
 		start := time.Now()
-		s.backfill(lowestEpoch, maxEpoch)
+		if err := s.backfill(lowestEpoch, maxEpoch); err != nil {
+			log.Error(err)
+			return
+		}
 		log.Infof("Finished backfilling range with time elapsed %v", time.Since(start))
 
 		// After backfilling, we set the lowest epoch for backfilling to be the
@@ -112,14 +118,15 @@ func (s *Service) backfill(start, end types.Epoch) error {
 	if err != nil {
 		return err
 	}
-	s.processProposerSlashings(s.ctx, propSlashings)
+	if err := s.processProposerSlashings(s.ctx, propSlashings); err != nil {
+		return err
+	}
 	log.Debugf("Running slashing detection on %d attestations", len(atts))
 	attSlashings, err := s.checkSlashableAttestations(s.ctx, atts)
 	if err != nil {
 		return err
 	}
-	s.processAttesterSlashings(s.ctx, attSlashings)
-	return nil
+	return s.processAttesterSlashings(s.ctx, attSlashings)
 }
 
 func (s *Service) getBlockPreState(ctx context.Context, b interfaces.BeaconBlock) (iface.BeaconState, error) {

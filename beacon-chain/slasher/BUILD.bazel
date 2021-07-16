@@ -3,6 +3,7 @@ load("@prysm//tools/go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = [
+        "backfill.go",
         "chunks.go",
         "detect_attestations.go",
         "detect_blocks.go",
@@ -27,12 +28,16 @@ go_library(
         "//beacon-chain/core/feed/state:go_default_library",
         "//beacon-chain/core/helpers:go_default_library",
         "//beacon-chain/db:go_default_library",
+        "//beacon-chain/db/filters:go_default_library",
         "//beacon-chain/operations/slashings:go_default_library",
         "//beacon-chain/slasher/types:go_default_library",
         "//beacon-chain/state/interface:go_default_library",
         "//beacon-chain/state/stategen:go_default_library",
         "//beacon-chain/sync:go_default_library",
         "//proto/eth/v1alpha1:go_default_library",
+        "//proto/interfaces:go_default_library",
+        "//shared/attestationutil:go_default_library",
+        "//shared/blockutil:go_default_library",
         "//shared/bytesutil:go_default_library",
         "//shared/event:go_default_library",
         "//shared/params:go_default_library",
@@ -53,6 +58,7 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = [
+        "backfill_test.go",
         "chunks_test.go",
         "detect_attestations_test.go",
         "detect_blocks_test.go",
@@ -77,6 +83,8 @@ go_test(
         "//beacon-chain/sync/initial-sync/testing:go_default_library",
         "//proto/beacon/p2p/v1:go_default_library",
         "//proto/eth/v1alpha1:go_default_library",
+        "//proto/eth/v1alpha1/wrapper:go_default_library",
+        "//proto/interfaces:go_default_library",
         "//shared/bls:go_default_library",
         "//shared/bytesutil:go_default_library",
         "//shared/event:go_default_library",

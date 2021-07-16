@@ -10,6 +10,7 @@ import (
 	"context"
 
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	"github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
 	"github.com/prysmaticlabs/prysm/shared/blockutil"
 	"go.opencensus.io/trace"
 )
@@ -26,7 +27,8 @@ func (s *Service) detectIncomingBlocks(ctx context.Context, ch chan *ethpb.Signe
 	for {
 		select {
 		case signedBlock := <-ch:
-			signedBlkHdr, err := blockutil.SignedBeaconBlockHeaderFromBlock(signedBlock)
+			wrap := wrapper.WrappedPhase0SignedBeaconBlock(signedBlock)
+			signedBlkHdr, err := blockutil.SignedBeaconBlockHeaderFromBlock(wrap)
 			if err != nil {
 				log.WithError(err).Error("Could not get block header from block")
 				continue
