@@ -8,6 +8,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/pkg/errors"
 	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/blockchain"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/feed"
@@ -17,10 +18,14 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/db/filters"
 	"github.com/prysmaticlabs/prysm/beacon-chain/operations/slashings"
 	slashertypes "github.com/prysmaticlabs/prysm/beacon-chain/slasher/types"
+	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
 	"github.com/prysmaticlabs/prysm/beacon-chain/state/stategen"
 	"github.com/prysmaticlabs/prysm/beacon-chain/sync"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	"github.com/prysmaticlabs/prysm/proto/interfaces"
+	"github.com/prysmaticlabs/prysm/shared/attestationutil"
 	"github.com/prysmaticlabs/prysm/shared/blockutil"
+	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/event"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/slotutil"
@@ -132,7 +137,9 @@ func (s *Service) run() {
 	go s.pruneSlasherData(s.ctx, s.slotTicker.C())
 }
 
-func (s *Service) waitForDataBackfill(wssPeriod tyes.Epoch) {
+// Backfills data for slasher if necessary after initial sync, and blocks
+// the main slasher thread until the backfill procedure is complete.
+func (s *Service) waitForDataBackfill(wssPeriod types.Epoch) {
 	// The lowest epoch we need to backfill for slasher is based on the
 	// head epoch minus the weak subjectivity period.
 	headSlot := s.serviceCfg.HeadStateFetcher.HeadSlot()
@@ -185,6 +192,7 @@ func (s *Service) backfill(start, end types.Epoch) error {
 		return err
 	}
 	headers := make([]*slashertypes.SignedBlockHeaderWrapper, 0, len(blocks))
+	atts := make([]*slashertypes.IndexedAttestationWrapper, 0)
 	for i, block := range blocks {
 		header, err := blockutil.SignedBeaconBlockHeaderFromBlock(block)
 		if err != nil {
@@ -194,6 +202,28 @@ func (s *Service) backfill(start, end types.Epoch) error {
 			SignedBeaconBlockHeader: header,
 			SigningRoot:             roots[i],
 		})
+		preState, err := s.getBlockPreState(s.ctx, block.Block())
+		if err != nil {
+			return err
+		}
+		for _, att := range block.Block().Body().Attestations() {
+			committee, err := helpers.BeaconCommitteeFromState(preState, att.Data.Slot, att.Data.CommitteeIndex)
+			if err != nil {
+				return err
+			}
+			indexedAtt, err := attestationutil.ConvertToIndexed(s.ctx, att, committee)
+			if err != nil {
+				return err
+			}
+			signingRoot, err := indexedAtt.Data.HashTreeRoot()
+			if err != nil {
+				return err
+			}
+			atts = append(atts, &slashertypes.IndexedAttestationWrapper{
+				IndexedAttestation: indexedAtt,
+				SigningRoot:        signingRoot,
+			})
+		}
 	}
 	slashings, err := s.detectProposerSlashings(s.ctx, headers)
 	if err != nil {
@@ -215,6 +245,17 @@ func (s *Service) Stop() error {
 // Status of the slasher service.
 func (s *Service) Status() error {
 	return nil
+}
+
+func (s *Service) getBlockPreState(ctx context.Context, b interfaces.BeaconBlock) (iface.BeaconState, error) {
+	preState, err := s.serviceCfg.StateGen.StateByRoot(ctx, bytesutil.ToBytes32(b.ParentRoot()))
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not get pre state for slot %d", b.Slot())
+	}
+	if preState == nil || preState.IsNil() {
+		return nil, errors.Wrapf(err, "nil pre state for slot %d", b.Slot())
+	}
+	return preState, nil
 }
 
 func (s *Service) waitForSync(genesisTime time.Time) {

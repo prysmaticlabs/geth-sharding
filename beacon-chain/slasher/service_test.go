@@ -12,6 +12,7 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/feed"
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
 	dbtest "github.com/prysmaticlabs/prysm/beacon-chain/db/testing"
+	"github.com/prysmaticlabs/prysm/beacon-chain/state/stategen"
 	mockSync "github.com/prysmaticlabs/prysm/beacon-chain/sync/initial-sync/testing"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
@@ -42,8 +43,7 @@ func TestService_waitForBackfill(t *testing.T) {
 
 	beaconState, err := testutil.NewBeaconState()
 	require.NoError(t, err)
-	currentSlot := types.Slot(4)
-	require.NoError(t, beaconState.SetSlot(currentSlot))
+	currentSlot := types.Slot(0)
 	mockChain := &mock.ChainService{
 		State: beaconState,
 		Slot:  &currentSlot,
@@ -58,6 +58,7 @@ func TestService_waitForBackfill(t *testing.T) {
 		BeaconDatabase:          beaconDB,
 		HeadStateFetcher:        mockChain,
 		SyncChecker:             &mockSync.Sync{IsSyncing: false},
+		StateGen:                stategen.New(beaconDB),
 	})
 	require.NoError(t, err)
 
@@ -71,7 +72,10 @@ func TestService_waitForBackfill(t *testing.T) {
 	// Write blocks for every slot from epoch 0 to numEpochs.
 	numSlots := numEpochs * uint64(params.BeaconConfig().SlotsPerEpoch)
 	blocks := make([]interfaces.SignedBeaconBlock, 0, numSlots)
+
 	for i := uint64(0); i < numSlots; i++ {
+		// Create a realistic looking block for the slot.
+		require.NoError(t, beaconState.SetSlot(types.Slot(i)))
 		sig := make([]byte, 96)
 		copy(sig[:], fmt.Sprintf("%d", i))
 		blk := testutil.HydrateSignedBeaconBlock(&ethpb.SignedBeaconBlock{
@@ -83,10 +87,15 @@ func TestService_waitForBackfill(t *testing.T) {
 		})
 		wrap := wrapper.WrappedPhase0SignedBeaconBlock(blk)
 		blocks = append(blocks, wrap)
+
+		// Save the state.
+		blockRoot, err := blk.Block.HashTreeRoot()
+		require.NoError(t, err)
+		srv.serviceCfg.StateGen.SaveState(ctx, blockRoot, beaconState)
 	}
 	require.NoError(t, beaconDB.SaveBlocks(ctx, blocks))
 
-	srv.waitForDataBackfill()
+	srv.waitForDataBackfill(types.Epoch(numEpochs))
 	require.LogsContain(t, hook, "Beginning slasher data backfill from epoch 0 to 8")
 }
 
