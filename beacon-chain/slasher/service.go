@@ -145,7 +145,7 @@ func (s *Service) waitForDataBackfill(wssPeriod types.Epoch) {
 	headSlot := s.serviceCfg.HeadStateFetcher.HeadSlot()
 	headEpoch := helpers.SlotToEpoch(headSlot)
 	lowestEpoch := headEpoch
-	if lowestEpoch > wssPeriod {
+	if lowestEpoch >= wssPeriod {
 		lowestEpoch = lowestEpoch - wssPeriod
 	}
 

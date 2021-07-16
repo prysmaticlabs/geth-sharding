@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func TestService_waitForBackfill(t *testing.T) {
+func TestService_waitForBackfill_OK(t *testing.T) {
 	beaconDB := dbtest.SetupDB(t)
 	slasherDB := dbtest.SetupSlasherDB(t)
 	hook := logTest.NewGlobal()
@@ -44,6 +44,8 @@ func TestService_waitForBackfill(t *testing.T) {
 	beaconState, err := testutil.NewBeaconState()
 	require.NoError(t, err)
 	currentSlot := types.Slot(0)
+	require.NoError(t, beaconState.SetSlot(currentSlot))
+
 	mockChain := &mock.ChainService{
 		State: beaconState,
 		Slot:  &currentSlot,
@@ -95,8 +97,146 @@ func TestService_waitForBackfill(t *testing.T) {
 	}
 	require.NoError(t, beaconDB.SaveBlocks(ctx, blocks))
 
+	require.NoError(t, beaconState.SetSlot(types.Slot(0)))
 	srv.waitForDataBackfill(types.Epoch(numEpochs))
 	require.LogsContain(t, hook, "Beginning slasher data backfill from epoch 0 to 8")
+}
+
+func TestService_waitForBackfill_DetectsSlashableBlock(t *testing.T) {
+	beaconDB := dbtest.SetupDB(t)
+	slasherDB := dbtest.SetupSlasherDB(t)
+	hook := logTest.NewGlobal()
+
+	beaconState, err := testutil.NewBeaconState()
+	require.NoError(t, err)
+	currentSlot := types.Slot(0)
+	require.NoError(t, beaconState.SetSlot(currentSlot))
+
+	mockChain := &mock.ChainService{
+		State: beaconState,
+		Slot:  &currentSlot,
+	}
+
+	ctx := context.Background()
+	srv, err := New(ctx, &ServiceConfig{
+		IndexedAttestationsFeed: new(event.Feed),
+		BeaconBlockHeadersFeed:  new(event.Feed),
+		StateNotifier:           &mock.MockStateNotifier{},
+		Database:                slasherDB,
+		BeaconDatabase:          beaconDB,
+		HeadStateFetcher:        mockChain,
+		SyncChecker:             &mockSync.Sync{IsSyncing: false},
+		StateGen:                stategen.New(beaconDB),
+	})
+	require.NoError(t, err)
+
+	// Set genesis time to a custom number of epochs ago.
+	numEpochs := uint64(8)
+	secondsPerSlot := params.BeaconConfig().SecondsPerSlot
+	secondsPerEpoch := secondsPerSlot * uint64(params.BeaconConfig().SlotsPerEpoch)
+	totalEpochTimeElapsed := numEpochs * secondsPerEpoch
+	srv.genesisTime = time.Now().Add(-time.Duration(totalEpochTimeElapsed) * time.Second)
+
+	// Write blocks for every slot from epoch 0 to numEpochs.
+	numSlots := numEpochs * uint64(params.BeaconConfig().SlotsPerEpoch)
+	blocks := make([]interfaces.SignedBeaconBlock, 0, numSlots)
+
+	for i := uint64(0); i < numSlots; i++ {
+		// Create a realistic looking block for the slot.
+		require.NoError(t, beaconState.SetSlot(types.Slot(i)))
+		sig := make([]byte, 96)
+		copy(sig[:], fmt.Sprintf("%d", i))
+		blk := testutil.HydrateSignedBeaconBlock(&ethpb.SignedBeaconBlock{
+			Block: testutil.HydrateBeaconBlock(&ethpb.BeaconBlock{
+				Slot:          types.Slot(i),
+				ProposerIndex: types.ValidatorIndex(i),
+			}),
+			Signature: sig,
+		})
+		wrap := wrapper.WrappedPhase0SignedBeaconBlock(blk)
+		blocks = append(blocks, wrap)
+
+		// Save the state.
+		blockRoot, err := blk.Block.HashTreeRoot()
+		require.NoError(t, err)
+		srv.serviceCfg.StateGen.SaveState(ctx, blockRoot, beaconState)
+	}
+	require.NoError(t, beaconDB.SaveBlocks(ctx, blocks))
+
+	require.NoError(t, beaconState.SetSlot(types.Slot(0)))
+	srv.waitForDataBackfill(types.Epoch(numEpochs))
+	require.LogsContain(t, hook, "Beginning slasher data backfill from epoch 0 to 8")
+}
+
+func BenchmarkService_backfill(b *testing.B) {
+	b.StopTimer()
+	srv := setupBackfillTest(b)
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		srv.waitForDataBackfill(8)
+	}
+}
+
+func setupBackfillTest(tb testing.TB) *Service {
+	beaconDB := dbtest.SetupDB(tb)
+	slasherDB := dbtest.SetupSlasherDB(tb)
+
+	beaconState, err := testutil.NewBeaconState()
+	require.NoError(tb, err)
+	currentSlot := types.Slot(0)
+	require.NoError(tb, beaconState.SetSlot(currentSlot))
+
+	mockChain := &mock.ChainService{
+		State: beaconState,
+		Slot:  &currentSlot,
+	}
+
+	ctx := context.Background()
+	srv, err := New(ctx, &ServiceConfig{
+		IndexedAttestationsFeed: new(event.Feed),
+		BeaconBlockHeadersFeed:  new(event.Feed),
+		StateNotifier:           &mock.MockStateNotifier{},
+		Database:                slasherDB,
+		BeaconDatabase:          beaconDB,
+		HeadStateFetcher:        mockChain,
+		SyncChecker:             &mockSync.Sync{IsSyncing: false},
+		StateGen:                stategen.New(beaconDB),
+	})
+	require.NoError(tb, err)
+
+	// Set genesis time to a custom number of epochs ago.
+	numEpochs := uint64(8)
+	secondsPerSlot := params.BeaconConfig().SecondsPerSlot
+	secondsPerEpoch := secondsPerSlot * uint64(params.BeaconConfig().SlotsPerEpoch)
+	totalEpochTimeElapsed := numEpochs * secondsPerEpoch
+	srv.genesisTime = time.Now().Add(-time.Duration(totalEpochTimeElapsed) * time.Second)
+
+	// Write blocks for every slot from epoch 0 to numEpochs.
+	numSlots := numEpochs * uint64(params.BeaconConfig().SlotsPerEpoch)
+	blocks := make([]interfaces.SignedBeaconBlock, 0, numSlots)
+
+	for i := uint64(0); i < numSlots; i++ {
+		// Create a realistic looking block for the slot.
+		require.NoError(tb, beaconState.SetSlot(types.Slot(i)))
+		sig := make([]byte, 96)
+		copy(sig[:], fmt.Sprintf("%d", i))
+		blk := testutil.HydrateSignedBeaconBlock(&ethpb.SignedBeaconBlock{
+			Block: testutil.HydrateBeaconBlock(&ethpb.BeaconBlock{
+				Slot:          types.Slot(i),
+				ProposerIndex: types.ValidatorIndex(i),
+			}),
+			Signature: sig,
+		})
+		wrap := wrapper.WrappedPhase0SignedBeaconBlock(blk)
+		blocks = append(blocks, wrap)
+
+		// Save the state.
+		blockRoot, err := blk.Block.HashTreeRoot()
+		require.NoError(tb, err)
+		srv.serviceCfg.StateGen.SaveState(ctx, blockRoot, beaconState)
+	}
+	require.NoError(tb, beaconDB.SaveBlocks(ctx, blocks))
+	require.NoError(tb, beaconState.SetSlot(types.Slot(0)))
 }
 
 func TestService_StartStop_ChainStartEvent(t *testing.T) {
