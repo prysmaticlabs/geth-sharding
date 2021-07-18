@@ -118,6 +118,13 @@
       "tools/analyzers/shadowpredecl/testdata/shadow.go": "Analyzer testdata has to break rules"
     }
   },
+  "recursivelock": {
+    "exclude_files": {
+      "external/.*": "Third party code",
+      "rules_go_work-.*": "Third party code",
+      "tools/analyzers/recursivelock/testdata/shadow.go": "Analyzer testdata has to break rules"
+    }
+  },
   "nop": {
     "exclude_files": {
       "external/.*": "Third party code",

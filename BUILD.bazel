@@ -119,6 +119,7 @@ nogo(
         "//tools/analyzers/featureconfig:go_tool_library",
         "//tools/analyzers/comparesame:go_tool_library",
         "//tools/analyzers/shadowpredecl:go_tool_library",
+        "//tools/analyzers/recursivelock:go_tool_library",
         "//tools/analyzers/nop:go_tool_library",
         "//tools/analyzers/slicedirect:go_tool_library",
         "//tools/analyzers/interfacechecker:go_tool_library",

@@ -1,0 +1,8 @@
+load("@prysm//tools/go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["badlocks.go"],
+    importpath = "github.com/prysmaticlabs/prysm/tools/analyzers/recursivelock/testdata",
+    visibility = ["//visibility:public"],
+)
