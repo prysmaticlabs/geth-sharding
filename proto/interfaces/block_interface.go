@@ -1,8 +1,10 @@
 package interfaces
 
 import (
+	ssz "github.com/ferranbt/fastssz"
 	types "github.com/prysmaticlabs/eth2-types"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -13,9 +15,12 @@ type SignedBeaconBlock interface {
 	Signature() []byte
 	IsNil() bool
 	Copy() SignedBeaconBlock
-	MarshalSSZ() ([]byte, error)
 	Proto() proto.Message
 	PbPhase0Block() (*ethpb.SignedBeaconBlock, error)
+	PbAltairBlock() (*prysmv2.SignedBeaconBlockAltair, error)
+	ssz.Marshaler
+	ssz.Unmarshaler
+	Version() int
 }
 
 // BeaconBlock describes an interface which states the methods
@@ -28,8 +33,10 @@ type BeaconBlock interface {
 	Body() BeaconBlockBody
 	IsNil() bool
 	HashTreeRoot() ([32]byte, error)
-	MarshalSSZ() ([]byte, error)
 	Proto() proto.Message
+	ssz.Marshaler
+	ssz.Unmarshaler
+	Version() int
 }
 
 // BeaconBlockBody describes the method set employed by an object
@@ -43,6 +50,7 @@ type BeaconBlockBody interface {
 	Attestations() []*ethpb.Attestation
 	Deposits() []*ethpb.Deposit
 	VoluntaryExits() []*ethpb.SignedVoluntaryExit
+	SyncAggregate() (*prysmv2.SyncAggregate, error)
 	IsNil() bool
 	HashTreeRoot() ([32]byte, error)
 	Proto() proto.Message

@@ -5,6 +5,7 @@ package operation
 
 import (
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
 )
 
 const (
@@ -18,6 +19,14 @@ const (
 
 	// ExitReceived is sent after an voluntary exit object has been received from the outside world (eg in RPC or sync)
 	ExitReceived
+
+	// SyncCommMessageReceived is sent after a sync committee message object has been received
+	// from the outside world. (eg. in sync)
+	SyncCommMessageReceived
+
+	// SyncContributionReceived is sent after a sync contribution object has been received
+	// from the outside world. (eg. in sync)
+	SyncContributionReceived
 )
 
 // UnAggregatedAttReceivedData is the data sent with UnaggregatedAttReceived events.
@@ -36,4 +45,14 @@ type AggregatedAttReceivedData struct {
 type ExitReceivedData struct {
 	// Exit is the voluntary exit object.
 	Exit *ethpb.SignedVoluntaryExit
+}
+
+// SyncCommReceivedData is the data sent with SyncCommMessageReceived events.
+type SyncCommReceivedData struct {
+	Message *prysmv2.SyncCommitteeMessage
+}
+
+// SyncContributionReceivedData is the data sent with SyncContributionReceived events.
+type SyncContributionReceivedData struct {
+	Contribution *prysmv2.ContributionAndProof
 }

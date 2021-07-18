@@ -178,6 +178,8 @@ func TestBlocksFetcher_findFork(t *testing.T) {
 			Epoch: finalizedEpoch,
 			Root:  []byte(fmt.Sprintf("finalized_root %d", finalizedEpoch)),
 		},
+		Genesis:        time.Now(),
+		ValidatorsRoot: [32]byte{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -321,9 +323,11 @@ func TestBlocksFetcher_findForkWithPeer(t *testing.T) {
 	st, err := testutil.NewBeaconState()
 	require.NoError(t, err)
 	mc := &mock.ChainService{
-		State: st,
-		Root:  genesisRoot[:],
-		DB:    beaconDB,
+		State:          st,
+		Root:           genesisRoot[:],
+		DB:             beaconDB,
+		Genesis:        time.Now(),
+		ValidatorsRoot: [32]byte{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -438,6 +442,8 @@ func TestBlocksFetcher_findAncestor(t *testing.T) {
 			Epoch: finalizedEpoch,
 			Root:  []byte(fmt.Sprintf("finalized_root %d", finalizedEpoch)),
 		},
+		Genesis:        time.Now(),
+		ValidatorsRoot: [32]byte{},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -33,15 +33,12 @@ type SszNetworkEncoder struct{}
 // ProtocolSuffixSSZSnappy is the last part of the topic string to identify the encoding protocol.
 const ProtocolSuffixSSZSnappy = "ssz_snappy"
 
-func (e SszNetworkEncoder) doEncode(msg interface{}) ([]byte, error) {
-	if v, ok := msg.(fastssz.Marshaler); ok {
-		return v.MarshalSSZ()
-	}
-	return nil, errors.Errorf("non-supported type: %T", msg)
+func (e SszNetworkEncoder) doEncode(msg fastssz.Marshaler) ([]byte, error) {
+	return msg.MarshalSSZ()
 }
 
 // EncodeGossip the proto gossip message to the io.Writer.
-func (e SszNetworkEncoder) EncodeGossip(w io.Writer, msg interface{}) (int, error) {
+func (e SszNetworkEncoder) EncodeGossip(w io.Writer, msg fastssz.Marshaler) (int, error) {
 	if msg == nil {
 		return 0, nil
 	}
@@ -58,7 +55,7 @@ func (e SszNetworkEncoder) EncodeGossip(w io.Writer, msg interface{}) (int, erro
 
 // EncodeWithMaxLength the proto message to the io.Writer. This encoding prefixes the byte slice with a protobuf varint
 // to indicate the size of the message. This checks that the encoded message isn't larger than the provided max limit.
-func (e SszNetworkEncoder) EncodeWithMaxLength(w io.Writer, msg interface{}) (int, error) {
+func (e SszNetworkEncoder) EncodeWithMaxLength(w io.Writer, msg fastssz.Marshaler) (int, error) {
 	if msg == nil {
 		return 0, nil
 	}
@@ -81,15 +78,12 @@ func (e SszNetworkEncoder) EncodeWithMaxLength(w io.Writer, msg interface{}) (in
 	return writeSnappyBuffer(w, b)
 }
 
-func (e SszNetworkEncoder) doDecode(b []byte, to interface{}) error {
-	if v, ok := to.(fastssz.Unmarshaler); ok {
-		return v.UnmarshalSSZ(b)
-	}
-	return errors.Errorf("non-supported type: %T", to)
+func (e SszNetworkEncoder) doDecode(b []byte, to fastssz.Unmarshaler) error {
+	return to.UnmarshalSSZ(b)
 }
 
 // DecodeGossip decodes the bytes to the protobuf gossip message provided.
-func (e SszNetworkEncoder) DecodeGossip(b []byte, to interface{}) error {
+func (e SszNetworkEncoder) DecodeGossip(b []byte, to fastssz.Unmarshaler) error {
 	b, err := DecodeSnappy(b, MaxGossipSize)
 	if err != nil {
 		return err
@@ -115,7 +109,7 @@ func DecodeSnappy(msg []byte, maxSize uint64) ([]byte, error) {
 
 // DecodeWithMaxLength the bytes from io.Reader to the protobuf message provided.
 // This checks that the decoded message isn't larger than the provided max limit.
-func (e SszNetworkEncoder) DecodeWithMaxLength(r io.Reader, to interface{}) error {
+func (e SszNetworkEncoder) DecodeWithMaxLength(r io.Reader, to fastssz.Unmarshaler) error {
 	msgLen, err := readVarint(r)
 	if err != nil {
 		return err

@@ -81,7 +81,7 @@ func (ns *Server) GetIdentity(ctx context.Context, _ *emptypb.Empty) (*ethpb.Ide
 
 // GetPeer retrieves data about the given peer.
 func (ns *Server) GetPeer(ctx context.Context, req *ethpb.PeerRequest) (*ethpb.PeerResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "nodev1.GetPeer")
+	ctx, span := trace.StartSpan(ctx, "node.GetPeer")
 	defer span.End()
 
 	peerStatus := ns.PeersFetcher.Peers()
@@ -134,7 +134,7 @@ func (ns *Server) GetPeer(ctx context.Context, req *ethpb.PeerRequest) (*ethpb.P
 
 // ListPeers retrieves data about the node's network peers.
 func (ns *Server) ListPeers(ctx context.Context, req *ethpb.PeersRequest) (*ethpb.PeersResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "nodev1.ListPeers")
+	ctx, span := trace.StartSpan(ctx, "node.ListPeers")
 	defer span.End()
 
 	peerStatus := ns.PeersFetcher.Peers()
@@ -230,7 +230,7 @@ func (ns *Server) ListPeers(ctx context.Context, req *ethpb.PeersRequest) (*ethp
 
 // PeerCount retrieves retrieves number of known peers.
 func (ns *Server) PeerCount(ctx context.Context, _ *emptypb.Empty) (*ethpb.PeerCountResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "nodev1.PeerCount")
+	ctx, span := trace.StartSpan(ctx, "node.PeerCount")
 	defer span.End()
 
 	peerStatus := ns.PeersFetcher.Peers()
@@ -248,7 +248,7 @@ func (ns *Server) PeerCount(ctx context.Context, _ *emptypb.Empty) (*ethpb.PeerC
 // GetVersion requests that the beacon node identify information about its implementation in a
 // format similar to a HTTP User-Agent field.
 func (ns *Server) GetVersion(ctx context.Context, _ *emptypb.Empty) (*ethpb.VersionResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "nodev1.Version")
+	ctx, span := trace.StartSpan(ctx, "node.Version")
 	defer span.End()
 
 	v := fmt.Sprintf("Prysm/%s (%s %s)", version.SemanticVersion(), runtime.GOOS, runtime.GOARCH)
@@ -262,7 +262,7 @@ func (ns *Server) GetVersion(ctx context.Context, _ *emptypb.Empty) (*ethpb.Vers
 // GetSyncStatus requests the beacon node to describe if it's currently syncing or not, and
 // if it is, what block it is up to.
 func (ns *Server) GetSyncStatus(ctx context.Context, _ *emptypb.Empty) (*ethpb.SyncingResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "nodev1.GetSyncStatus")
+	ctx, span := trace.StartSpan(ctx, "node.GetSyncStatus")
 	defer span.End()
 
 	headSlot := ns.HeadFetcher.HeadSlot()
@@ -284,7 +284,7 @@ func (ns *Server) GetSyncStatus(ctx context.Context, _ *emptypb.Empty) (*ethpb.S
 //    "503":
 //      description: Node not initialized or having issues
 func (ns *Server) GetHealth(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
-	ctx, span := trace.StartSpan(ctx, "nodev1.GetHealth")
+	ctx, span := trace.StartSpan(ctx, "node.GetHealth")
 	defer span.End()
 
 	if ns.SyncChecker.Synced() {

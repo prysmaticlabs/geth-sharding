@@ -17,10 +17,12 @@ import (
 	"github.com/prysmaticlabs/prysm/shared/hashutil"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/sliceutil"
+	log "github.com/sirupsen/logrus"
 )
 
 var committeeCache = cache.NewCommitteesCache()
 var proposerIndicesCache = cache.NewProposerIndicesCache()
+var syncCommitteeCache = cache.NewSyncCommittee()
 
 // SlotCommitteeCount returns the number of crosslink committees of a slot. The
 // active validator count is provided as an argument rather than a imported implementation
@@ -271,26 +273,21 @@ func VerifyAttestationBitfieldLengths(state iface.ReadOnlyBeaconState, att *ethp
 	return nil
 }
 
-// ShuffledIndices uses input beacon state and returns the shuffled indices of the input epoch,
-// the shuffled indices then can be used to break up into committees.
-func ShuffledIndices(state iface.ReadOnlyBeaconState, epoch types.Epoch) ([]types.ValidatorIndex, error) {
-	seed, err := Seed(state, epoch, params.BeaconConfig().DomainBeaconAttester)
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not get seed for epoch %d", epoch)
-	}
-
+// Returns the active indices and the total active balance of the validators in input `state` and during input `epoch`.
+func activeIndicesAndBalance(state iface.ReadOnlyBeaconState, epoch types.Epoch) ([]types.ValidatorIndex, uint64, error) {
+	balances := uint64(0)
 	indices := make([]types.ValidatorIndex, 0, state.NumValidators())
 	if err := state.ReadFromEveryValidator(func(idx int, val iface.ReadOnlyValidator) error {
 		if IsActiveValidatorUsingTrie(val, epoch) {
+			balances += val.EffectiveBalance()
 			indices = append(indices, types.ValidatorIndex(idx))
 		}
 		return nil
 	}); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	// UnshuffleList is used as an optimized implementation for raw speed.
-	return UnshuffleList(indices, seed)
+	return indices, balances, nil
 }
 
 // UpdateCommitteeCache gets called at the beginning of every epoch to cache the committee shuffled indices
@@ -306,7 +303,13 @@ func UpdateCommitteeCache(state iface.ReadOnlyBeaconState, epoch types.Epoch) er
 			return nil
 		}
 
-		shuffledIndices, err := ShuffledIndices(state, e)
+		indices, balance, err := activeIndicesAndBalance(state, e)
+		if err != nil {
+			return err
+		}
+
+		// Get the shuffled indices based on the seed.
+		shuffledIndices, err := UnshuffleList(indices, seed)
 		if err != nil {
 			return err
 		}
@@ -322,11 +325,23 @@ func UpdateCommitteeCache(state iface.ReadOnlyBeaconState, epoch types.Epoch) er
 			return sortedIndices[i] < sortedIndices[j]
 		})
 
+		// Only update active balance field in cache if it's current epoch.
+		// Using current epoch state to update next epoch field will cause insert an invalid
+		// active balance value.
+		b := &cache.Balance{}
+		if e == epoch {
+			b = &cache.Balance{
+				Exist: true,
+				Total: balance,
+			}
+		}
+
 		if err := committeeCache.AddCommitteeShuffledList(&cache.Committees{
 			ShuffledIndices: shuffledIndices,
 			CommitteeCount:  uint64(params.BeaconConfig().SlotsPerEpoch.Mul(count)),
 			Seed:            seed,
 			SortedIndices:   sortedIndices,
+			ActiveBalance:   b,
 		}); err != nil {
 			return err
 		}
@@ -383,10 +398,200 @@ func UpdateProposerIndicesInCache(state iface.ReadOnlyBeaconState) error {
 	})
 }
 
-// ClearCache clears the committee cache
+// ClearCache clears the beacon committee cache and sync committee cache.
 func ClearCache() {
 	committeeCache = cache.NewCommitteesCache()
 	proposerIndicesCache = cache.NewProposerIndicesCache()
+	syncCommitteeCache = cache.NewSyncCommittee()
+}
+
+// IsCurrentEpochSyncCommittee returns true if the input validator index belongs in the current epoch sync committee
+// along with the sync committee root.
+// 1.) Checks if the public key exists in the sync committee cache
+// 2.) If 1 fails, checks if the public key exists in the input current sync committee object
+func IsCurrentEpochSyncCommittee(
+	st iface.BeaconStateAltair, valIdx types.ValidatorIndex,
+) (bool, error) {
+	root, err := syncPeriodBoundaryRoot(st)
+	if err != nil {
+		return false, err
+	}
+	indices, err := syncCommitteeCache.CurrentEpochIndexPosition(bytesutil.ToBytes32(root), valIdx)
+	if err == cache.ErrNonExistingSyncCommitteeKey {
+		val, err := st.ValidatorAtIndex(valIdx)
+		if err != nil {
+			return false, nil
+		}
+		committee, err := st.CurrentSyncCommittee()
+		if err != nil {
+			return false, err
+		}
+
+		// Fill in the cache on miss.
+		go func() {
+			if err := syncCommitteeCache.UpdatePositionsInCommittee(bytesutil.ToBytes32(root), st); err != nil {
+				log.Errorf("Could not fill sync committee cache on miss: %v", err)
+			}
+		}()
+
+		return len(findSubCommitteeIndices(val.PublicKey, committee.Pubkeys)) > 0, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return len(indices) > 0, nil
+}
+
+// IsNextEpochSyncCommittee returns true if the input validator index belongs in the next epoch sync committee
+// along with the sync committee root.
+// 1.) Checks if the public key exists in the sync committee cache
+// 2.) If 1 fails, checks if the public key exists in the input next sync committee object
+func IsNextEpochSyncCommittee(
+	st iface.BeaconStateAltair, valIdx types.ValidatorIndex,
+) (bool, error) {
+	root, err := syncPeriodBoundaryRoot(st)
+	if err != nil {
+		return false, err
+	}
+	indices, err := syncCommitteeCache.NextEpochIndexPosition(bytesutil.ToBytes32(root), valIdx)
+	if err == cache.ErrNonExistingSyncCommitteeKey {
+		val, err := st.ValidatorAtIndex(valIdx)
+		if err != nil {
+			return false, nil
+		}
+		committee, err := st.NextSyncCommittee()
+		if err != nil {
+			return false, err
+		}
+		return len(findSubCommitteeIndices(val.PublicKey, committee.Pubkeys)) > 0, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return len(indices) > 0, nil
+}
+
+// CurrentEpochSyncSubcommitteeIndices returns the subcommittee indices of the
+// current epoch sync committee for input validator.
+func CurrentEpochSyncSubcommitteeIndices(
+	st iface.BeaconStateAltair, valIdx types.ValidatorIndex,
+) ([]uint64, error) {
+	root, err := syncPeriodBoundaryRoot(st)
+	if err != nil {
+		return nil, err
+	}
+	indices, err := syncCommitteeCache.CurrentEpochIndexPosition(bytesutil.ToBytes32(root), valIdx)
+	if err == cache.ErrNonExistingSyncCommitteeKey {
+		val, err := st.ValidatorAtIndex(valIdx)
+		if err != nil {
+			return nil, nil
+		}
+		committee, err := st.CurrentSyncCommittee()
+		if err != nil {
+			return nil, err
+		}
+
+		// Fill in the cache on miss.
+		go func() {
+			if err := syncCommitteeCache.UpdatePositionsInCommittee(bytesutil.ToBytes32(root), st); err != nil {
+				log.Errorf("Could not fill sync committee cache on miss: %v", err)
+			}
+		}()
+
+		return findSubCommitteeIndices(val.PublicKey, committee.Pubkeys), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return indices, nil
+}
+
+// NextEpochSyncSubcommitteeIndices returns the subcommittee indices of the next epoch sync committee for input validator.
+func NextEpochSyncSubcommitteeIndices(
+	st iface.BeaconStateAltair, valIdx types.ValidatorIndex,
+) ([]uint64, error) {
+	root, err := syncPeriodBoundaryRoot(st)
+	if err != nil {
+		return nil, err
+	}
+	indices, err := syncCommitteeCache.NextEpochIndexPosition(bytesutil.ToBytes32(root), valIdx)
+	if err == cache.ErrNonExistingSyncCommitteeKey {
+		val, err := st.ValidatorAtIndex(valIdx)
+		if err != nil {
+			return nil, nil
+		}
+		committee, err := st.NextSyncCommittee()
+		if err != nil {
+			return nil, err
+		}
+		return findSubCommitteeIndices(val.PublicKey, committee.Pubkeys), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return indices, nil
+}
+
+// UpdateSyncCommitteeCache updates sync committee cache.
+// It uses `state`'s latest block header root as key. To avoid miss usage, it disallows
+// block header with state root zeroed out.
+func UpdateSyncCommitteeCache(state iface.BeaconStateAltair) error {
+	nextSlot := state.Slot() + 1
+	if nextSlot%params.BeaconConfig().SlotsPerEpoch != 0 {
+		return errors.New("not at the end of the epoch to update cache")
+	}
+	if SlotToEpoch(nextSlot)%params.BeaconConfig().EpochsPerSyncCommitteePeriod != 0 {
+		return errors.New("not at sync committee period boundary to update cache")
+	}
+
+	header := state.LatestBlockHeader()
+	if bytes.Equal(header.StateRoot, params.BeaconConfig().ZeroHash[:]) {
+		return errors.New("zero hash state root can't be used to update cache")
+	}
+
+	prevBlockRoot, err := header.HashTreeRoot()
+	if err != nil {
+		return err
+	}
+
+	return syncCommitteeCache.UpdatePositionsInCommittee(prevBlockRoot, state)
+}
+
+// Loop through `pubKeys` for matching `pubKey` and get the indices where it matches.
+func findSubCommitteeIndices(pubKey []byte, pubKeys [][]byte) []uint64 {
+	var indices []uint64
+	for i, k := range pubKeys {
+		if bytes.Equal(k, pubKey) {
+			indices = append(indices, uint64(i))
+		}
+	}
+	return indices
+}
+
+// Retrieve the current sync period boundary root by calculating sync period start epoch
+// and calling `BlockRoot`.
+// It uses the boundary slot - 1 for block root. (Ex: SlotsPerEpoch * EpochsPerSyncCommitteePeriod - 1)
+func syncPeriodBoundaryRoot(state iface.ReadOnlyBeaconState) ([]byte, error) {
+	// Can't call `BlockRoot` until the first slot.
+	if state.Slot() == params.BeaconConfig().GenesisSlot {
+		return params.BeaconConfig().ZeroHash[:], nil
+	}
+
+	startEpoch, err := SyncCommitteePeriodStartEpoch(CurrentEpoch(state))
+	if err != nil {
+		return nil, err
+	}
+	startEpochSlot, err := StartSlot(startEpoch)
+	if err != nil {
+		return nil, err
+	}
+
+	// Prevent underflow
+	if startEpochSlot >= 1 {
+		startEpochSlot--
+	}
+
+	return BlockRootAtSlot(state, startEpochSlot)
 }
 
 // This computes proposer indices of the current epoch and returns a list of proposer indices,

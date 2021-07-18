@@ -7,6 +7,8 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//proto/eth/v1alpha1:go_default_library",
+        "//proto/prysm/v2:go_default_library",
+        "@com_github_ferranbt_fastssz//:go_default_library",
         "@com_github_prysmaticlabs_eth2_types//:go_default_library",
         "@org_golang_google_protobuf//proto:go_default_library",
     ],

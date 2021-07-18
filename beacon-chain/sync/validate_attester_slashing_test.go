@@ -82,10 +82,11 @@ func TestValidateAttesterSlashing_ValidSlashing(t *testing.T) {
 	r := &Service{
 		cfg: &Config{
 			P2P:         p,
-			Chain:       &mock.ChainService{State: s},
+			Chain:       &mock.ChainService{State: s, Genesis: time.Now()},
 			InitialSync: &mockSync.Sync{IsSyncing: false},
 		},
 		seenAttesterSlashingCache: make(map[uint64]bool),
+		subHandler:                newSubTopicHandler(),
 	}
 
 	buf := new(bytes.Buffer)
@@ -93,6 +94,9 @@ func TestValidateAttesterSlashing_ValidSlashing(t *testing.T) {
 	require.NoError(t, err)
 
 	topic := p2p.GossipTypeMapping[reflect.TypeOf(slashing)]
+	d, err := r.currentForkDigest()
+	assert.NoError(t, err)
+	topic = r.addDigestToTopic(topic, d)
 	msg := &pubsub.Message{
 		Message: &pubsubpb.Message{
 			Data:  buf.Bytes(),
@@ -113,16 +117,21 @@ func TestValidateAttesterSlashing_CanFilter(t *testing.T) {
 		cfg: &Config{
 			P2P:         p,
 			InitialSync: &mockSync.Sync{IsSyncing: false},
+			Chain:       &mock.ChainService{Genesis: time.Now()},
 		},
 		seenAttesterSlashingCache: make(map[uint64]bool),
+		subHandler:                newSubTopicHandler(),
 	}
 
 	r.setAttesterSlashingIndicesSeen([]uint64{1, 2, 3, 4}, []uint64{3, 4, 5, 6})
 
 	// The below attestations should be filtered hence bad signature is ok.
 	topic := p2p.GossipTypeMapping[reflect.TypeOf(&ethpb.AttesterSlashing{})]
+	d, err := r.currentForkDigest()
+	assert.NoError(t, err)
+	topic = r.addDigestToTopic(topic, d)
 	buf := new(bytes.Buffer)
-	_, err := p.Encoding().EncodeGossip(buf, &ethpb.AttesterSlashing{
+	_, err = p.Encoding().EncodeGossip(buf, &ethpb.AttesterSlashing{
 		Attestation_1: testutil.HydrateIndexedAttestation(&ethpb.IndexedAttestation{
 			AttestingIndices: []uint64{3},
 		}),

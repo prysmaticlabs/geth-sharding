@@ -1,7 +1,9 @@
 package helpers
 
 import (
+	"github.com/pkg/errors"
 	types "github.com/prysmaticlabs/eth2-types"
+	"github.com/prysmaticlabs/prysm/beacon-chain/cache"
 	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
 	"github.com/prysmaticlabs/prysm/shared/params"
 )
@@ -47,8 +49,23 @@ func TotalBalance(state iface.ReadOnlyValidators, indices []types.ValidatorIndex
 //    """
 //    return get_total_balance(state, set(get_active_validator_indices(state, get_current_epoch(state))))
 func TotalActiveBalance(state iface.ReadOnlyBeaconState) (uint64, error) {
-	total := uint64(0)
+	// Check if the active balance exists in cache.
 	epoch := SlotToEpoch(state.Slot())
+
+	seed, err := Seed(state, epoch, params.BeaconConfig().DomainBeaconAttester)
+	if err != nil {
+		return 0, errors.Wrap(err, "could not get seed")
+	}
+	activeBalance, err := committeeCache.ActiveBalance(seed)
+	if err == nil {
+		return activeBalance, nil
+	}
+	if err != cache.ErrNonCommitteeKey {
+		return 0, errors.Wrap(err, "could not interface with committee cache")
+	}
+
+	// Cache miss. Manually compute the active balance and fill the cache.
+	total := uint64(0)
 	if err := state.ReadFromEveryValidator(func(idx int, val iface.ReadOnlyValidator) error {
 		if IsActiveValidatorUsingTrie(val, epoch) {
 			total += val.EffectiveBalance()
@@ -57,6 +74,7 @@ func TotalActiveBalance(state iface.ReadOnlyBeaconState) (uint64, error) {
 	}); err != nil {
 		return 0, err
 	}
+
 	return total, nil
 }
 

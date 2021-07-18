@@ -14,7 +14,8 @@ import (
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/encoder"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
-	"github.com/prysmaticlabs/prysm/shared/params"
+	"github.com/prysmaticlabs/prysm/shared/p2putils"
+	"github.com/prysmaticlabs/prysm/shared/testutil/assert"
 	"github.com/prysmaticlabs/prysm/shared/timeutils"
 	"github.com/stretchr/testify/require"
 )
@@ -22,6 +23,10 @@ import (
 func TestService_CanSubscribe(t *testing.T) {
 	currentFork := [4]byte{0x01, 0x02, 0x03, 0x04}
 	validProtocolSuffix := "/" + encoder.ProtocolSuffixSSZSnappy
+	genesisTime := time.Now()
+	valRoot := [32]byte{}
+	digest, err := p2putils.CreateForkDigest(genesisTime, valRoot[:])
+	assert.NoError(t, err)
 	type test struct {
 		name  string
 		topic string
@@ -30,7 +35,7 @@ func TestService_CanSubscribe(t *testing.T) {
 	tests := []test{
 		{
 			name:  "block topic on current fork",
-			topic: fmt.Sprintf(BlockSubnetTopicFormat, currentFork) + validProtocolSuffix,
+			topic: fmt.Sprintf(BlockSubnetTopicFormat, digest) + validProtocolSuffix,
 			want:  true,
 		},
 		{
@@ -60,17 +65,17 @@ func TestService_CanSubscribe(t *testing.T) {
 		},
 		{
 			name:  "bad prefix",
-			topic: fmt.Sprintf("/eth3/%x/foobar", currentFork) + validProtocolSuffix,
+			topic: fmt.Sprintf("/eth3/%x/foobar", digest) + validProtocolSuffix,
 			want:  false,
 		},
 		{
 			name:  "topic not in gossip mapping",
-			topic: fmt.Sprintf("/eth2/%x/foobar", currentFork) + validProtocolSuffix,
+			topic: fmt.Sprintf("/eth2/%x/foobar", digest) + validProtocolSuffix,
 			want:  false,
 		},
 		{
 			name:  "att subnet topic on current fork",
-			topic: fmt.Sprintf(AttestationSubnetTopicFormat, currentFork, 55 /*subnet*/) + validProtocolSuffix,
+			topic: fmt.Sprintf(AttestationSubnetTopicFormat, digest, 55 /*subnet*/) + validProtocolSuffix,
 			want:  true,
 		},
 		{
@@ -81,11 +86,11 @@ func TestService_CanSubscribe(t *testing.T) {
 	}
 
 	// Ensure all gossip topic mappings pass validation.
-	for topic := range GossipTopicMappings {
-		formatting := []interface{}{currentFork}
+	for _, topic := range AllTopics() {
+		formatting := []interface{}{digest}
 
 		// Special case for attestation subnets which have a second formatting placeholder.
-		if topic == AttestationSubnetTopicFormat {
+		if topic == AttestationSubnetTopicFormat || topic == SyncCommitteeSubnetTopicFormat {
 			formatting = append(formatting, 0 /* some subnet ID */)
 		}
 
@@ -99,9 +104,8 @@ func TestService_CanSubscribe(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Service{
-				currentForkDigest:     currentFork,
-				genesisValidatorsRoot: make([]byte, 32),
-				genesisTime:           time.Now(),
+				genesisValidatorsRoot: valRoot[:],
+				genesisTime:           genesisTime,
 			}
 			if got := s.CanSubscribe(tt.topic); got != tt.want {
 				t.Errorf("CanSubscribe(%s) = %v, want %v", tt.topic, got, tt.want)
@@ -189,7 +193,7 @@ func Test_scanfcheck(t *testing.T) {
 func TestGossipTopicMapping_scanfcheck_GossipTopicFormattingSanityCheck(t *testing.T) {
 	// scanfcheck only supports integer based substitutions at the moment. Any others will
 	// inaccurately fail validation.
-	for topic := range GossipTopicMappings {
+	for _, topic := range AllTopics() {
 		t.Run(topic, func(t *testing.T) {
 			for i, c := range topic {
 				if string(c) == "%" {
@@ -204,8 +208,11 @@ func TestGossipTopicMapping_scanfcheck_GossipTopicFormattingSanityCheck(t *testi
 }
 
 func TestService_FilterIncomingSubscriptions(t *testing.T) {
-	currentFork := [4]byte{0x01, 0x02, 0x03, 0x04}
 	validProtocolSuffix := "/" + encoder.ProtocolSuffixSSZSnappy
+	genesisTime := time.Now()
+	valRoot := [32]byte{}
+	digest, err := p2putils.CreateForkDigest(genesisTime, valRoot[:])
+	assert.NoError(t, err)
 	type args struct {
 		id   peer.ID
 		subs []*pubsubpb.RPC_SubOpts
@@ -241,7 +248,7 @@ func TestService_FilterIncomingSubscriptions(t *testing.T) {
 							return &b
 						}(),
 						Topicid: func() *string {
-							s := fmt.Sprintf(BlockSubnetTopicFormat, currentFork) + validProtocolSuffix
+							s := fmt.Sprintf(BlockSubnetTopicFormat, digest) + validProtocolSuffix
 							return &s
 						}(),
 					},
@@ -255,7 +262,7 @@ func TestService_FilterIncomingSubscriptions(t *testing.T) {
 						return &b
 					}(),
 					Topicid: func() *string {
-						s := fmt.Sprintf(BlockSubnetTopicFormat, currentFork) + validProtocolSuffix
+						s := fmt.Sprintf(BlockSubnetTopicFormat, digest) + validProtocolSuffix
 						return &s
 					}(),
 				},
@@ -271,7 +278,7 @@ func TestService_FilterIncomingSubscriptions(t *testing.T) {
 							return &b
 						}(),
 						Topicid: func() *string {
-							s := fmt.Sprintf(BlockSubnetTopicFormat, currentFork) + validProtocolSuffix
+							s := fmt.Sprintf(BlockSubnetTopicFormat, digest) + validProtocolSuffix
 							return &s
 						}(),
 					},
@@ -281,7 +288,7 @@ func TestService_FilterIncomingSubscriptions(t *testing.T) {
 							return &b
 						}(),
 						Topicid: func() *string {
-							s := fmt.Sprintf(BlockSubnetTopicFormat, currentFork) + validProtocolSuffix
+							s := fmt.Sprintf(BlockSubnetTopicFormat, digest) + validProtocolSuffix
 							return &s
 						}(),
 					},
@@ -295,7 +302,7 @@ func TestService_FilterIncomingSubscriptions(t *testing.T) {
 						return &b
 					}(),
 					Topicid: func() *string {
-						s := fmt.Sprintf(BlockSubnetTopicFormat, currentFork) + validProtocolSuffix
+						s := fmt.Sprintf(BlockSubnetTopicFormat, digest) + validProtocolSuffix
 						return &s
 					}(),
 				},
@@ -305,9 +312,8 @@ func TestService_FilterIncomingSubscriptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Service{
-				currentForkDigest:     currentFork,
-				genesisValidatorsRoot: make([]byte, 32),
-				genesisTime:           time.Now(),
+				genesisValidatorsRoot: valRoot[:],
+				genesisTime:           genesisTime,
 			}
 			got, err := s.FilterIncomingSubscriptions(tt.args.id, tt.args.subs)
 			if (err != nil) != tt.wantErr {
@@ -350,14 +356,4 @@ func TestService_MonitorsStateForkUpdates(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	require.True(t, s.isInitialized())
-	require.NotEmpty(t, s.currentForkDigest)
-}
-
-func TestService_doesntSupportForksYet(t *testing.T) {
-	// Part of phase 1 will include a state transition which updates the state's fork. In phase 0,
-	// there are no forks or fork schedule planned. As such, we'll work on supporting fork upgrades
-	// in phase 1 changes.
-	if len(params.BeaconConfig().ForkVersionSchedule) > 0 {
-		t.Fatal("pubsub subscription filters do not support fork schedule (yet)")
-	}
 }

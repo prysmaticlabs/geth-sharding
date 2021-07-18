@@ -6,12 +6,14 @@ import (
 
 	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/go-bitfield"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/altair"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/blocks"
 	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/shared/aggregation"
 	"github.com/prysmaticlabs/prysm/shared/featureconfig"
 	"github.com/prysmaticlabs/prysm/shared/params"
+	"github.com/prysmaticlabs/prysm/shared/version"
 )
 
 type proposerAtts []*ethpb.Attestation
@@ -22,8 +24,21 @@ type proposerAtts []*ethpb.Attestation
 func (a proposerAtts) filter(ctx context.Context, state iface.BeaconState) (proposerAtts, proposerAtts) {
 	validAtts := make([]*ethpb.Attestation, 0, len(a))
 	invalidAtts := make([]*ethpb.Attestation, 0, len(a))
+	var attestationProcessor func(context.Context, iface.BeaconState, *ethpb.Attestation) (iface.BeaconState, error)
+	switch state.Version() {
+	case version.Phase0:
+		attestationProcessor = blocks.ProcessAttestationNoVerifySignature
+	case version.Altair:
+		// Use a wrapper here, as go needs strong typing for the function signature.
+		attestationProcessor = func(ctx context.Context, state iface.BeaconState, attestation *ethpb.Attestation) (iface.BeaconState, error) {
+			return altair.ProcessAttestationNoVerifySignature(ctx, state, attestation)
+		}
+	default:
+		// Exit early if there is an unknown state type.
+		return validAtts, invalidAtts
+	}
 	for _, att := range a {
-		if _, err := blocks.ProcessAttestationNoVerifySignature(ctx, state, att); err == nil {
+		if _, err := attestationProcessor(ctx, state, att); err == nil {
 			validAtts = append(validAtts, att)
 			continue
 		}

@@ -54,7 +54,7 @@ func TestService_validateCommitteeIndexBeaconAttestation(t *testing.T) {
 	invalidRoot := [32]byte{'A', 'B', 'C', 'D'}
 	s.setBadBlock(ctx, invalidRoot)
 
-	digest, err := s.forkDigest()
+	digest, err := s.currentForkDigest()
 	require.NoError(t, err)
 
 	blk := testutil.NewBeaconBlock()

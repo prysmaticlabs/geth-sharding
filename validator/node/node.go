@@ -117,6 +117,9 @@ func NewValidatorClient(cliCtx *cli.Context) (*ValidatorClient, error) {
 		params.LoadChainConfigFile(chainConfigFileName)
 	}
 
+	// Initializes any forks here.
+	params.BeaconConfig().InitializeForkSchedule()
+
 	if err := validatorClient.initializeFromCLI(cliCtx); err != nil {
 		return nil, err
 	}

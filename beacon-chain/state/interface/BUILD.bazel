@@ -15,6 +15,7 @@ go_library(
         "//shared/benchutil:__pkg__",
         "//shared/depositutil:__subpackages__",
         "//shared/testutil:__pkg__",
+        "//shared/testutil/altair:__pkg__",
         "//slasher/rpc:__subpackages__",
         "//spectest:__subpackages__",
         "//tools/benchmark-files-gen:__pkg__",

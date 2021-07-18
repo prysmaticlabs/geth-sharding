@@ -16,6 +16,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/prysmaticlabs/prysm/beacon-chain/cache"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
+	"github.com/prysmaticlabs/prysm/shared/params"
+	"github.com/prysmaticlabs/prysm/shared/version"
 )
 
 // Listener defines the discovery V5 network interface that is used
@@ -36,7 +39,7 @@ type Listener interface {
 // to be dynamically discoverable by others given our tracked committee ids.
 func (s *Service) RefreshENR() {
 	// return early if discv5 isnt running
-	if s.dv5Listener == nil {
+	if s.dv5Listener == nil || !s.isInitialized() {
 		return
 	}
 	bitV := bitfield.NewBitvector64()
@@ -44,16 +47,43 @@ func (s *Service) RefreshENR() {
 	for _, idx := range committees {
 		bitV.SetBitAt(idx, true)
 	}
-	currentBitV, err := bitvector(s.dv5Listener.Self().Record())
+	currentBitV, err := attBitvector(s.dv5Listener.Self().Record())
 	if err != nil {
-		log.Errorf("Could not retrieve bitfield: %v", err)
+		log.Errorf("Could not retrieve att bitfield: %v", err)
 		return
 	}
-	if bytes.Equal(bitV, currentBitV) {
-		// return early if bitfield hasn't changed
-		return
+	// Compare current epoch with our fork epochs
+	currEpoch := helpers.SlotToEpoch(helpers.CurrentSlot(uint64(s.genesisTime.Unix())))
+	altairForkEpoch := params.BeaconConfig().AltairForkEpoch
+	switch {
+	// Altair Behaviour
+	case currEpoch >= altairForkEpoch:
+		// Retrieve sync subnets from application level
+		// cache.
+		bitS := bitfield.Bitvector4{byte(0x00)}
+		committees = cache.SyncSubnetIDs.GetAllSubnets(currEpoch)
+		for _, idx := range committees {
+			bitS.SetBitAt(idx, true)
+		}
+		currentBitS, err := syncBitvector(s.dv5Listener.Self().Record())
+		if err != nil {
+			log.Errorf("Could not retrieve sync bitfield: %v", err)
+			return
+		}
+		if bytes.Equal(bitV, currentBitV) && bytes.Equal(bitS, currentBitS) &&
+			s.Metadata().Version() == version.Altair {
+			// return early if bitfields haven't changed
+			return
+		}
+		s.updateSubnetRecordWithMetadataV2(bitV, bitS)
+	default:
+		// Phase 0 behaviour.
+		if bytes.Equal(bitV, currentBitV) {
+			// return early if bitfield hasn't changed
+			return
+		}
+		s.updateSubnetRecordWithMetadata(bitV)
 	}
-	s.updateSubnetRecordWithMetadata(bitV)
 	// ping all peers to inform them of new metadata
 	s.pingPeers()
 }
@@ -206,7 +236,8 @@ func (s *Service) createLocalNode(
 	if err != nil {
 		return nil, errors.Wrap(err, "could not add eth2 fork version entry to enr")
 	}
-	return intializeAttSubnets(localNode), nil
+	localNode = initializeAttSubnets(localNode)
+	return initializeSyncCommSubnets(localNode), nil
 }
 
 func (s *Service) startDiscoveryV5(

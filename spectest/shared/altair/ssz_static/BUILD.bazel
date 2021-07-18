@@ -1,0 +1,20 @@
+load("@prysm//tools/go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    testonly = True,
+    srcs = ["ssz_static.go"],
+    importpath = "github.com/prysmaticlabs/prysm/spectest/shared/altair/ssz_static",
+    visibility = ["//spectest:__subpackages__"],
+    deps = [
+        "//beacon-chain/state/v2:go_default_library",
+        "//proto/beacon/p2p/v1:go_default_library",
+        "//proto/eth/v1alpha1:go_default_library",
+        "//proto/prysm/v2:go_default_library",
+        "//shared/testutil:go_default_library",
+        "//shared/testutil/require:go_default_library",
+        "//spectest/utils:go_default_library",
+        "@com_github_ferranbt_fastssz//:go_default_library",
+        "@com_github_golang_snappy//:go_default_library",
+    ],
+)

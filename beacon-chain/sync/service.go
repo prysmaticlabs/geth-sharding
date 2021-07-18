@@ -23,6 +23,7 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/db"
 	"github.com/prysmaticlabs/prysm/beacon-chain/operations/attestations"
 	"github.com/prysmaticlabs/prysm/beacon-chain/operations/slashings"
+	"github.com/prysmaticlabs/prysm/beacon-chain/operations/synccommittee"
 	"github.com/prysmaticlabs/prysm/beacon-chain/operations/voluntaryexits"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
 	"github.com/prysmaticlabs/prysm/beacon-chain/state/stategen"
@@ -41,6 +42,8 @@ var _ shared.Service = (*Service)(nil)
 const rangeLimit = 1024
 const seenBlockSize = 1000
 const seenAttSize = 10000
+const seenSyncMsgSize = 1000
+const seenSyncSize = 300
 const seenExitSize = 100
 const seenProposerSlashingSize = 100
 const badBlockSize = 1000
@@ -62,6 +65,7 @@ type Config struct {
 	AttPool           attestations.Pool
 	ExitPool          voluntaryexits.PoolManager
 	SlashingPool      slashings.PoolManager
+	SyncCommsPool     synccommittee.Pool
 	Chain             blockchainService
 	InitialSync       Checker
 	StateNotifier     statefeed.Notifier
@@ -91,6 +95,7 @@ type Service struct {
 	slotToPendingBlocks       *gcache.Cache
 	seenPendingBlocks         map[[32]byte]bool
 	blkRootToPendingAtts      map[[32]byte][]*ethpb.SignedAggregateAttestationAndProof
+	subHandler                *subTopicHandler
 	pendingAttsLock           sync.RWMutex
 	pendingQueueLock          sync.RWMutex
 	chainStarted              *abool.AtomicBool
@@ -106,6 +111,10 @@ type Service struct {
 	seenProposerSlashingCache *lru.Cache
 	seenAttesterSlashingLock  sync.RWMutex
 	seenAttesterSlashingCache map[uint64]bool
+	seenSyncContributionLock  sync.RWMutex
+	seenSyncContributionCache *lru.Cache
+	seenSyncMessageLock       sync.RWMutex
+	seenSyncMessageCache      *lru.Cache
 	badBlockCache             *lru.Cache
 	badBlockLock              sync.RWMutex
 }
@@ -124,6 +133,7 @@ func NewService(ctx context.Context, cfg *Config) *Service {
 		slotToPendingBlocks:  c,
 		seenPendingBlocks:    make(map[[32]byte]bool),
 		blkRootToPendingAtts: make(map[[32]byte][]*ethpb.SignedAggregateAttestationAndProof),
+		subHandler:           newSubTopicHandler(),
 		rateLimiter:          rLimiter,
 	}
 
@@ -171,6 +181,7 @@ func (s *Service) Stop() error {
 		if err := s.cfg.P2P.PubSub().UnregisterTopicValidator(t); err != nil {
 			log.Errorf("Could not successfully unregister for topic %s: %v", t, err)
 		}
+		s.subHandler.removeTopic(t)
 	}
 	defer s.cancel()
 	return nil
@@ -198,6 +209,14 @@ func (s *Service) initCaches() error {
 	if err != nil {
 		return err
 	}
+	syncMsgCache, err := lru.New(seenSyncMsgSize)
+	if err != nil {
+		return err
+	}
+	syncContrCache, err := lru.New(seenSyncSize)
+	if err != nil {
+		return err
+	}
 	exitCache, err := lru.New(seenExitSize)
 	if err != nil {
 		return err
@@ -212,6 +231,8 @@ func (s *Service) initCaches() error {
 	}
 	s.seenBlockCache = blkCache
 	s.seenAttestationCache = attCache
+	s.seenSyncContributionCache = syncContrCache
+	s.seenSyncMessageCache = syncMsgCache
 	s.seenExitCache = exitCache
 	s.seenAttesterSlashingCache = make(map[uint64]bool)
 	s.seenProposerSlashingCache = proposerSlashingCache
@@ -255,7 +276,13 @@ func (s *Service) registerHandlers() {
 					return
 				}
 				// Register respective pubsub handlers at state synced event.
-				s.registerSubscribers()
+				digest, err := s.currentForkDigest()
+				if err != nil {
+					log.WithError(err).Error("Could not retrieve current fork digest")
+				}
+				currentEpoch := helpers.SlotToEpoch(helpers.CurrentSlot(uint64(s.cfg.Chain.GenesisTime().Unix())))
+				s.registerSubscribers(currentEpoch, digest)
+				go s.forkWatcher()
 				return
 			}
 		case <-s.ctx.Done():

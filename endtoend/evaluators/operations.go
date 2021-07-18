@@ -14,6 +14,10 @@ import (
 	"github.com/prysmaticlabs/prysm/endtoend/policies"
 	e2etypes "github.com/prysmaticlabs/prysm/endtoend/types"
 	eth "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	"github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
+	"github.com/prysmaticlabs/prysm/proto/interfaces"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
+	wrapperv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2/wrapper"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/testutil"
@@ -92,26 +96,27 @@ var ValidatorsVoteWithTheMajority = e2etypes.Evaluator{
 func processesDepositsInBlocks(conns ...*grpc.ClientConn) error {
 	conn := conns[0]
 	client := eth.NewBeaconChainClient(conn)
-
+	altairClient := prysmv2.NewBeaconChainAltairClient(conn)
 	chainHead, err := client.GetChainHead(context.Background(), &emptypb.Empty{})
 	if err != nil {
 		return errors.Wrap(err, "failed to get chain head")
 	}
 
 	req := &eth.ListBlocksRequest{QueryFilter: &eth.ListBlocksRequest_Epoch{Epoch: chainHead.HeadEpoch - 1}}
-	blks, err := client.ListBlocks(context.Background(), req)
+	blks, err := altairClient.ListBlocks(context.Background(), req)
 	if err != nil {
 		return errors.Wrap(err, "failed to get blocks from beacon-chain")
 	}
 	var deposits uint64
-	for _, blk := range blks.BlockContainers {
+	for _, ctr := range blks.BlockContainers {
+		blk := convertToBlockInterface(ctr)
 		fmt.Printf(
 			"Slot: %d with %d deposits, Eth1 block %#x with %d deposits\n",
-			blk.Block.Block.Slot,
-			len(blk.Block.Block.Body.Deposits),
-			blk.Block.Block.Body.Eth1Data.BlockHash, blk.Block.Block.Body.Eth1Data.DepositCount,
+			blk.Block().Slot(),
+			len(blk.Block().Body().Deposits()),
+			blk.Block().Body().Eth1Data().BlockHash, blk.Block().Body().Eth1Data().DepositCount,
 		)
-		deposits += uint64(len(blk.Block.Block.Body.Deposits))
+		deposits += uint64(len(blk.Block().Body().Deposits()))
 	}
 	if deposits != depositValCount {
 		return fmt.Errorf("expected %d deposits to be processed, received %d", depositValCount, deposits)
@@ -122,6 +127,7 @@ func processesDepositsInBlocks(conns ...*grpc.ClientConn) error {
 func verifyGraffitiInBlocks(conns ...*grpc.ClientConn) error {
 	conn := conns[0]
 	client := eth.NewBeaconChainClient(conn)
+	altairClient := prysmv2.NewBeaconChainAltairClient(conn)
 
 	chainHead, err := client.GetChainHead(context.Background(), &emptypb.Empty{})
 	if err != nil {
@@ -129,19 +135,20 @@ func verifyGraffitiInBlocks(conns ...*grpc.ClientConn) error {
 	}
 
 	req := &eth.ListBlocksRequest{QueryFilter: &eth.ListBlocksRequest_Epoch{Epoch: chainHead.HeadEpoch - 1}}
-	blks, err := client.ListBlocks(context.Background(), req)
+	blks, err := altairClient.ListBlocks(context.Background(), req)
 	if err != nil {
 		return errors.Wrap(err, "failed to get blocks from beacon-chain")
 	}
-	for _, blk := range blks.BlockContainers {
+	for _, ctr := range blks.BlockContainers {
+		blk := convertToBlockInterface(ctr)
 		var e bool
 		for _, graffiti := range helpers.Graffiti {
-			if bytes.Equal(bytesutil.PadTo([]byte(graffiti), 32), blk.Block.Block.Body.Graffiti) {
+			if bytes.Equal(bytesutil.PadTo([]byte(graffiti), 32), blk.Block().Body().Graffiti()) {
 				e = true
 				break
 			}
 		}
-		if !e && blk.Block.Block.Slot != 0 {
+		if !e && blk.Block().Slot() != 0 {
 			return errors.New("could not get graffiti from the list")
 		}
 	}
@@ -326,20 +333,21 @@ func validatorIsExited(conns ...*grpc.ClientConn) error {
 func validatorsVoteWithTheMajority(conns ...*grpc.ClientConn) error {
 	conn := conns[0]
 	client := eth.NewBeaconChainClient(conn)
-
+	altairClient := prysmv2.NewBeaconChainAltairClient(conn)
 	chainHead, err := client.GetChainHead(context.Background(), &emptypb.Empty{})
 	if err != nil {
 		return errors.Wrap(err, "failed to get chain head")
 	}
 
 	req := &eth.ListBlocksRequest{QueryFilter: &eth.ListBlocksRequest_Epoch{Epoch: chainHead.HeadEpoch - 1}}
-	blks, err := client.ListBlocks(context.Background(), req)
+	blks, err := altairClient.ListBlocks(context.Background(), req)
 	if err != nil {
 		return errors.Wrap(err, "failed to get blocks from beacon-chain")
 	}
 
-	for _, blk := range blks.BlockContainers {
-		slot, vote := blk.Block.Block.Slot, blk.Block.Block.Body.Eth1Data.BlockHash
+	for _, ctr := range blks.BlockContainers {
+		blk := convertToBlockInterface(ctr)
+		slot, vote := blk.Block().Slot(), blk.Block().Body().Eth1Data().BlockHash
 		slotsPerVotingPeriod := params.E2ETestConfig().SlotsPerEpoch.Mul(uint64(params.E2ETestConfig().EpochsPerEth1VotingPeriod))
 
 		// We treat epoch 1 differently from other epoch for two reasons:
@@ -369,3 +377,13 @@ func validatorsVoteWithTheMajority(conns ...*grpc.ClientConn) error {
 }
 
 var expectedEth1DataVote []byte
+
+func convertToBlockInterface(obj *prysmv2.BeaconBlockContainerAltair) interfaces.SignedBeaconBlock {
+	if obj.GetPhase0Block() != nil {
+		return wrapper.WrappedPhase0SignedBeaconBlock(obj.GetPhase0Block())
+	}
+	if obj.GetAltairBlock() != nil {
+		return wrapperv2.WrappedAltairSignedBeaconBlock(obj.GetAltairBlock())
+	}
+	return nil
+}

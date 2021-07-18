@@ -42,18 +42,18 @@ diff -ur --exclude=".git" a b > $GOPATH/src/github.com/prysmaticlabs/prysm/third
 ```
 
 Next, we need to tell the Bazel [WORKSPACE](https://github.com/prysmaticlabs/prysm/blob/master/WORKSPACE) to patch the specific dependency.
-Here's an example for a patch we use today for the [Ethereum APIs](https://github.com/prysmaticlabs/ethereumapis)
+Here's an example for a patch we use today for the [Ethereum APIs](https://github.com/prysmaticlabs/prysm/proto)
 dependency:
 
 ```
 go_repository(
-    name = "com_github_prysmaticlabs_ethereumapis",
+    name = "com_github_prysmaticlabs_prysm/proto",
     commit = "367ca574419a062ae26818f60bdeb5751a6f538",
     patch_args = ["-p1"],
     patches = [
-        "//third_party:com_github_prysmaticlabs_ethereumapis-tags.patch",
+        "//third_party:com_github_prysmaticlabs_prysm/proto-tags.patch",
     ],
-    importpath = "github.com/prysmaticlabs/ethereumapis",
+    importpath = "github.com/prysmaticlabs/prysm/proto",
 )
 ```
 

@@ -15,10 +15,11 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/state"
 	"github.com/prysmaticlabs/prysm/beacon-chain/db/kv"
 	testingDB "github.com/prysmaticlabs/prysm/beacon-chain/db/testing"
+	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/peers"
 	p2ptest "github.com/prysmaticlabs/prysm/beacon-chain/p2p/testing"
 	p2ptypes "github.com/prysmaticlabs/prysm/beacon-chain/p2p/types"
-	"github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	v1 "github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
 	mockSync "github.com/prysmaticlabs/prysm/beacon-chain/sync/initial-sync/testing"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	p2pWrapper "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1/wrapper"
@@ -60,7 +61,7 @@ func TestStatusRPCHandler_Disconnects_OnForkVersionMismatch(t *testing.T) {
 		},
 		rateLimiter: newRateLimiter(p1),
 	}
-	pcl := protocol.ID("/testing")
+	pcl := protocol.ID(p2p.RPCStatusTopicV1)
 	topic := string(pcl)
 	r.rateLimiter.limiterMap[topic] = leakybucket.NewCollector(1, 1, false)
 
@@ -128,7 +129,7 @@ func TestStatusRPCHandler_ConnectsOnGenesis(t *testing.T) {
 		},
 		rateLimiter: newRateLimiter(p1),
 	}
-	pcl := protocol.ID("/testing")
+	pcl := protocol.ID(p2p.RPCStatusTopicV1)
 	topic := string(pcl)
 	r.rateLimiter.limiterMap[topic] = leakybucket.NewCollector(1, 1, false)
 
@@ -144,7 +145,7 @@ func TestStatusRPCHandler_ConnectsOnGenesis(t *testing.T) {
 
 	stream1, err := p1.BHost.NewStream(context.Background(), p2.BHost.ID(), pcl)
 	require.NoError(t, err)
-	digest, err := r.forkDigest()
+	digest, err := r.currentForkDigest()
 	require.NoError(t, err)
 
 	err = r.statusRPCHandler(context.Background(), &pb.Status{ForkDigest: digest[:], FinalizedRoot: params.BeaconConfig().ZeroHash[:]}, stream1)
@@ -205,11 +206,11 @@ func TestStatusRPCHandler_ReturnsHelloMessage(t *testing.T) {
 		},
 		rateLimiter: newRateLimiter(p1),
 	}
-	digest, err := r.forkDigest()
+	digest, err := r.currentForkDigest()
 	require.NoError(t, err)
 
 	// Setup streams
-	pcl := protocol.ID("/testing")
+	pcl := protocol.ID(p2p.RPCStatusTopicV1)
 	topic := string(pcl)
 	r.rateLimiter.limiterMap[topic] = leakybucket.NewCollector(1, 1, false)
 	var wg sync.WaitGroup
@@ -291,7 +292,7 @@ func TestHandshakeHandlers_Roundtrip(t *testing.T) {
 		ctx:         context.Background(),
 		rateLimiter: newRateLimiter(p1),
 	}
-	p1.Digest, err = r.forkDigest()
+	p1.Digest, err = r.currentForkDigest()
 	require.NoError(t, err)
 
 	r2 := &Service{
@@ -303,7 +304,7 @@ func TestHandshakeHandlers_Roundtrip(t *testing.T) {
 		},
 		rateLimiter: newRateLimiter(p2),
 	}
-	p2.Digest, err = r.forkDigest()
+	p2.Digest, err = r.currentForkDigest()
 	require.NoError(t, err)
 
 	r.Start()
@@ -435,7 +436,7 @@ func TestStatusRPCRequest_RequestSent(t *testing.T) {
 		defer wg.Done()
 		out := &pb.Status{}
 		assert.NoError(t, r.cfg.P2P.Encoding().DecodeWithMaxLength(stream, out))
-		digest, err := r.forkDigest()
+		digest, err := r.currentForkDigest()
 		assert.NoError(t, err)
 		expected := &pb.Status{
 			ForkDigest:     digest[:],
@@ -844,7 +845,7 @@ func TestStatusRPC_ValidGenesisMessage(t *testing.T) {
 		},
 		ctx: context.Background(),
 	}
-	digest, err := r.forkDigest()
+	digest, err := r.currentForkDigest()
 	require.NoError(t, err)
 	// There should be no error for a status message
 	// with a genesis checkpoint.

@@ -18,7 +18,7 @@ import (
 
 // GetGenesis retrieves details of the chain's genesis which can be used to identify chain.
 func (bs *Server) GetGenesis(ctx context.Context, _ *emptypb.Empty) (*ethpb.GenesisResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.GetGenesis")
+	ctx, span := trace.StartSpan(ctx, "beacon.GetGenesis")
 	defer span.End()
 
 	genesisTime := bs.GenesisTimeFetcher.GenesisTime()
@@ -45,7 +45,7 @@ func (bs *Server) GetGenesis(ctx context.Context, _ *emptypb.Empty) (*ethpb.Gene
 
 // GetStateRoot calculates HashTreeRoot for state with given 'stateId'. If stateId is root, same value will be returned.
 func (bs *Server) GetStateRoot(ctx context.Context, req *ethpb.StateRequest) (*ethpb.StateRootResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.GetStateRoot")
+	ctx, span := trace.StartSpan(ctx, "beacon.GetStateRoot")
 	defer span.End()
 
 	var (
@@ -72,7 +72,7 @@ func (bs *Server) GetStateRoot(ctx context.Context, req *ethpb.StateRequest) (*e
 
 // GetStateFork returns Fork object for state with given 'stateId'.
 func (bs *Server) GetStateFork(ctx context.Context, req *ethpb.StateRequest) (*ethpb.StateForkResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.GetStateFork")
+	ctx, span := trace.StartSpan(ctx, "beacon.GetStateFork")
 	defer span.End()
 
 	var (
@@ -103,7 +103,7 @@ func (bs *Server) GetStateFork(ctx context.Context, req *ethpb.StateRequest) (*e
 // GetFinalityCheckpoints returns finality checkpoints for state with given 'stateId'. In case finality is
 // not yet achieved, checkpoint should return epoch 0 and ZERO_HASH as root.
 func (bs *Server) GetFinalityCheckpoints(ctx context.Context, req *ethpb.StateRequest) (*ethpb.StateFinalityCheckpointResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.GetFinalityCheckpoints")
+	ctx, span := trace.StartSpan(ctx, "beacon.GetFinalityCheckpoints")
 	defer span.End()
 
 	var (

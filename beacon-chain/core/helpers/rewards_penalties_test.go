@@ -4,7 +4,8 @@ import (
 	"testing"
 
 	types "github.com/prysmaticlabs/eth2-types"
-	"github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	"github.com/prysmaticlabs/prysm/beacon-chain/cache"
+	v1 "github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/shared/params"
@@ -55,6 +56,14 @@ func TestTotalActiveBalance_OK(t *testing.T) {
 	}})
 	require.NoError(t, err)
 
+	// Validate that cache miss to start with.
+	epoch := SlotToEpoch(state.Slot())
+	seed, err := Seed(state, epoch, params.BeaconConfig().DomainBeaconAttester)
+	require.NoError(t, err)
+	_, err = committeeCache.ActiveBalance(seed)
+	require.Equal(t, cache.ErrNonCommitteeKey, err)
+
+	// Validate manual calculation passes.
 	balance, err := TotalActiveBalance(state)
 	assert.NoError(t, err)
 	wanted := state.Validators()[0].EffectiveBalance + state.Validators()[1].EffectiveBalance +

@@ -1,10 +1,11 @@
-package v2
+package v2_test
 
 import (
 	"testing"
 
 	types "github.com/prysmaticlabs/eth2-types"
-	"github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	v1 "github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	statealtair "github.com/prysmaticlabs/prysm/beacon-chain/state/v2"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/testutil"
@@ -16,7 +17,7 @@ func TestFieldTrie_NewTrie(t *testing.T) {
 	newState, _ := testutil.DeterministicGenesisState(t, 40)
 
 	// 5 represents the enum value of state roots
-	trie, err := NewFieldTrie(5, newState.StateRoots(), uint64(params.BeaconConfig().SlotsPerHistoricalRoot))
+	trie, err := statealtair.NewFieldTrie(5, newState.StateRoots(), uint64(params.BeaconConfig().SlotsPerHistoricalRoot))
 	require.NoError(t, err)
 	root, err := v1.RootsArrayHashTreeRoot(newState.StateRoots(), uint64(params.BeaconConfig().SlotsPerHistoricalRoot), "StateRoots")
 	require.NoError(t, err)
@@ -28,7 +29,7 @@ func TestFieldTrie_NewTrie(t *testing.T) {
 func TestFieldTrie_RecomputeTrie(t *testing.T) {
 	newState, _ := testutil.DeterministicGenesisState(t, 32)
 	// 10 represents the enum value of validators
-	trie, err := NewFieldTrie(11, newState.Validators(), params.BeaconConfig().ValidatorRegistryLimit)
+	trie, err := statealtair.NewFieldTrie(11, newState.Validators(), params.BeaconConfig().ValidatorRegistryLimit)
 	require.NoError(t, err)
 
 	changedIdx := []uint64{2, 29}

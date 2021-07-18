@@ -2,25 +2,34 @@ package sync
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/d4l3k/messagediff"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	pb "github.com/libp2p/go-libp2p-pubsub/pb"
+	mock "github.com/prysmaticlabs/prysm/beacon-chain/blockchain/testing"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
 	p2ptesting "github.com/prysmaticlabs/prysm/beacon-chain/p2p/testing"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	"github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
+	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/testutil"
-	"google.golang.org/protobuf/proto"
+	"github.com/prysmaticlabs/prysm/shared/testutil/require"
 )
 
 func TestService_decodePubsubMessage(t *testing.T) {
+	digest, err := helpers.ComputeForkDigest(params.BeaconConfig().GenesisForkVersion, make([]byte, 32))
+	require.NoError(t, err)
 	tests := []struct {
 		name    string
 		topic   string
 		input   *pubsub.Message
-		want    proto.Message
+		want    interface{}
 		wantErr error
 	}{
 		{
@@ -44,12 +53,12 @@ func TestService_decodePubsubMessage(t *testing.T) {
 		},
 		{
 			name:    "topic not mapped to any message type",
-			topic:   "/eth2/abcdef/foo",
+			topic:   "/eth2/abababab/foo/ssz_snappy",
 			wantErr: p2p.ErrMessageNotMapped,
 		},
 		{
 			name:  "valid message -- beacon block",
-			topic: p2p.GossipTypeMapping[reflect.TypeOf(&ethpb.SignedBeaconBlock{})],
+			topic: fmt.Sprintf(p2p.GossipTypeMapping[reflect.TypeOf(&ethpb.SignedBeaconBlock{})], digest),
 			input: &pubsub.Message{
 				Message: &pb.Message{
 					Data: func() []byte {
@@ -62,13 +71,13 @@ func TestService_decodePubsubMessage(t *testing.T) {
 				},
 			},
 			wantErr: nil,
-			want:    testutil.NewBeaconBlock(),
+			want:    wrapper.WrappedPhase0SignedBeaconBlock(testutil.NewBeaconBlock()),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Service{
-				cfg: &Config{P2P: p2ptesting.NewTestP2P(t)},
+				cfg: &Config{P2P: p2ptesting.NewTestP2P(t), Chain: &mock.ChainService{ValidatorsRoot: [32]byte{}, Genesis: time.Now()}},
 			}
 			if tt.topic != "" {
 				if tt.input == nil {
@@ -79,7 +88,7 @@ func TestService_decodePubsubMessage(t *testing.T) {
 				tt.input.Message.Topic = &tt.topic
 			}
 			got, err := s.decodePubsubMessage(tt.input)
-			if err != tt.wantErr {
+			if err != tt.wantErr && !strings.Contains(err.Error(), tt.wantErr.Error()) {
 				t.Errorf("decodePubsubMessage() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}

@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	types "github.com/prysmaticlabs/eth2-types"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1"
+	"github.com/prysmaticlabs/prysm/shared/p2putils"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"go.opencensus.io/trace"
 	"google.golang.org/grpc/codes"
@@ -20,7 +19,7 @@ import (
 
 // GetForkSchedule retrieve all scheduled upcoming forks this node is aware of.
 func (bs *Server) GetForkSchedule(ctx context.Context, _ *emptypb.Empty) (*ethpb.ForkScheduleResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.GetForkSchedule")
+	ctx, span := trace.StartSpan(ctx, "beacon.GetForkSchedule")
 	defer span.End()
 
 	schedule := params.BeaconConfig().ForkVersionSchedule
@@ -30,20 +29,21 @@ func (bs *Server) GetForkSchedule(ctx context.Context, _ *emptypb.Empty) (*ethpb
 		}, nil
 	}
 
-	epochs := sortedEpochs(schedule)
+	versions := p2putils.SortedForkVersions(schedule)
 	forks := make([]*ethpb.Fork, len(schedule))
 	var previous, current []byte
-	for i, e := range epochs {
+	for i, v := range versions {
 		if i == 0 {
 			previous = params.BeaconConfig().GenesisForkVersion
 		} else {
 			previous = current
 		}
-		current = schedule[e]
+		copyV := v
+		current = copyV[:]
 		forks[i] = &ethpb.Fork{
 			PreviousVersion: previous,
 			CurrentVersion:  current,
-			Epoch:           e,
+			Epoch:           schedule[v],
 		}
 	}
 
@@ -69,7 +69,7 @@ func (bs *Server) GetSpec(ctx context.Context, _ *emptypb.Empty) (*ethpb.SpecRes
 
 // GetDepositContract retrieves deposit contract address and genesis fork version.
 func (bs *Server) GetDepositContract(ctx context.Context, _ *emptypb.Empty) (*ethpb.DepositContractResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.GetDepositContract")
+	ctx, span := trace.StartSpan(ctx, "beacon.GetDepositContract")
 	defer span.End()
 
 	return &ethpb.DepositContractResponse{
@@ -78,17 +78,6 @@ func (bs *Server) GetDepositContract(ctx context.Context, _ *emptypb.Empty) (*et
 			Address: params.BeaconConfig().DepositContractAddress,
 		},
 	}, nil
-}
-
-func sortedEpochs(forkSchedule map[types.Epoch][]byte) []types.Epoch {
-	sortedEpochs := make([]types.Epoch, len(forkSchedule))
-	i := 0
-	for k := range forkSchedule {
-		sortedEpochs[i] = k
-		i++
-	}
-	sort.Slice(sortedEpochs, func(a, b int) bool { return sortedEpochs[a] < sortedEpochs[b] })
-	return sortedEpochs
 }
 
 func prepareConfigSpec() (map[string]string, error) {
@@ -108,6 +97,8 @@ func prepareConfigSpec() (map[string]string, error) {
 		tagValue := strings.ToUpper(tField.Tag.Get("yaml"))
 		vField := v.Field(i)
 		switch vField.Kind() {
+		case reflect.Int:
+			data[tagValue] = strconv.FormatInt(vField.Int(), 10)
 		case reflect.Uint64:
 			data[tagValue] = strconv.FormatUint(vField.Uint(), 10)
 		case reflect.Slice:

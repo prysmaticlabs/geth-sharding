@@ -1,0 +1,79 @@
+// Copyright 2020 Prysmatic Labs.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+syntax = "proto3";
+
+package ethereum.prysm.v2;
+
+import "google/api/annotations.proto";
+
+import "proto/eth/v1alpha1/beacon_block.proto";
+import "proto/eth/v1alpha1/beacon_chain.proto";
+
+import "proto/prysm/v2/beacon_block.proto";
+
+option csharp_namespace = "Ethereum.Prysm.V2";
+option go_package = "github.com/prysmaticlabs/prysm/proto/prysm/v2;v2";
+option java_multiple_files = true;
+option java_outer_classname = "BeaconChainProtoAl";
+option java_package = "org.ethereum.prysm.v2";
+option php_namespace = "Ethereum\\Prysm\\v2";
+
+// Beacon chain API
+//
+// The beacon chain API can be used to access data relevant to the Ethereum Beacon Chain.
+service BeaconChainAltair {
+    // Retrieve blocks by root, slot, or epoch.
+    //
+    // The server may return multiple blocks in the case that a slot or epoch is
+    // provided as the filter criteria. The server may return an empty list when
+    // no blocks in their database match the filter criteria. This RPC should
+    // not return NOT_FOUND. Only one filter criteria should be used. This endpoint
+    // allows for retrieval of genesis information via a boolean query filter.
+    rpc ListBlocks(ethereum.eth.v1alpha1.ListBlocksRequest) returns (ListBlocksResponseAltair) {
+        option (google.api.http) = {
+            get: "/prysm/v2/beacon/blocks"
+        };
+    }
+}
+
+message ListBlocksResponseAltair {
+    repeated BeaconBlockContainerAltair blockContainers = 1;
+
+    // A pagination token returned from a previous call to `ListBlocks`
+    // that indicates from where listing should continue.
+    // This field is optional.
+    string next_page_token = 2;
+
+    // Total count of Blocks matching the request filter.
+    int32 total_size = 3;
+}
+
+// A container that contains both the beacon block
+// and its corresponding root.
+message BeaconBlockContainerAltair {
+    // 32 byte merkle tree root of contained beacon block.
+    bytes block_root = 1;
+
+    // Boolean indicating whether the block is canonical.
+    bool canonical = 2;
+
+    // The desired block to be returned back.
+    oneof block {
+        // Representing a phase 0 block.
+        ethereum.eth.v1alpha1.SignedBeaconBlock phase0_block = 3 ;
+
+        // Representing an altair block.
+        SignedBeaconBlockAltair altair_block = 4;
+    }
+}

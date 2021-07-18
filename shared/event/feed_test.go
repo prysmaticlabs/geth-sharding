@@ -315,3 +315,193 @@ func BenchmarkFeedSend1000(b *testing.B) {
 	b.StopTimer()
 	done.Wait()
 }
+
+func TestFeed_Send(t *testing.T) {
+	tests := []struct {
+		name        string
+		evFeed      *Feed
+		testSetup   func(fd *Feed, t *testing.T, o interface{})
+		obj         interface{}
+		expectPanic bool
+	}{
+		{
+			name:   "normal struct",
+			evFeed: new(Feed),
+			testSetup: func(fd *Feed, t *testing.T, o interface{}) {
+				testChan := make(chan testFeedWithPointer, 1)
+				fd.Subscribe(testChan)
+			},
+			obj: testFeedWithPointer{
+				a: new(uint64),
+				b: new(string),
+			},
+			expectPanic: false,
+		},
+		{
+			name:   "un-implemented interface",
+			evFeed: new(Feed),
+			testSetup: func(fd *Feed, t *testing.T, o interface{}) {
+				testChan := make(chan testFeedIface, 1)
+				fd.Subscribe(testChan)
+			},
+			obj: testFeedWithPointer{
+				a: new(uint64),
+				b: new(string),
+			},
+			expectPanic: true,
+		},
+		{
+			name:   "semi-implemented interface",
+			evFeed: new(Feed),
+			testSetup: func(fd *Feed, t *testing.T, o interface{}) {
+				testChan := make(chan testFeedIface, 1)
+				fd.Subscribe(testChan)
+			},
+			obj: testFeed2{
+				a: 0,
+				b: "",
+				c: []byte{'A'},
+			},
+			expectPanic: true,
+		},
+		{
+			name:   "fully-implemented interface",
+			evFeed: new(Feed),
+			testSetup: func(fd *Feed, t *testing.T, o interface{}) {
+				testChan := make(chan testFeedIface)
+				// Make it unbuffered to allow message to
+				// pass through
+				go func() {
+					a := <-testChan
+					if !reflect.DeepEqual(a, o) {
+						t.Errorf("Got = %v, want = %v", a, o)
+					}
+				}()
+				fd.Subscribe(testChan)
+			},
+			obj: testFeed{
+				a: 0,
+				b: "",
+			},
+			expectPanic: false,
+		},
+		{
+			name:   "fully-implemented interface with additional methods",
+			evFeed: new(Feed),
+			testSetup: func(fd *Feed, t *testing.T, o interface{}) {
+				testChan := make(chan testFeedIface)
+				// Make it unbuffered to allow message to
+				// pass through
+				go func() {
+					a := <-testChan
+					if !reflect.DeepEqual(a, o) {
+						t.Errorf("Got = %v, want = %v", a, o)
+					}
+				}()
+				fd.Subscribe(testChan)
+			},
+			obj: testFeed3{
+				a: 0,
+				b: "",
+				c: []byte{'A'},
+				d: []byte{'B'},
+			},
+			expectPanic: false,
+		},
+		{
+			name:   "concrete types implementing the same interface",
+			evFeed: new(Feed),
+			testSetup: func(fd *Feed, t *testing.T, o interface{}) {
+				testChan := make(chan testFeed, 1)
+				// Make it unbuffered to allow message to
+				// pass through
+				go func() {
+					a := <-testChan
+					if !reflect.DeepEqual(a, o) {
+						t.Errorf("Got = %v, want = %v", a, o)
+					}
+				}()
+				fd.Subscribe(testChan)
+			},
+			obj: testFeed3{
+				a: 0,
+				b: "",
+				c: []byte{'A'},
+				d: []byte{'B'},
+			},
+			expectPanic: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					if !tt.expectPanic {
+						t.Errorf("panic triggered when unexpected: %v", r)
+					}
+				} else {
+					if tt.expectPanic {
+						t.Error("panic not triggered when expected")
+					}
+				}
+			}()
+			tt.testSetup(tt.evFeed, t, tt.obj)
+			if gotNsent := tt.evFeed.Send(tt.obj); gotNsent != 1 {
+				t.Errorf("Send() = %v, want %v", gotNsent, 1)
+			}
+		})
+	}
+}
+
+// The following objects below are a collection of different
+// struct types to test with.
+type testFeed struct {
+	a uint64
+	b string
+}
+
+func (r testFeed) method1() {
+
+}
+
+func (r testFeed) method2() {
+
+}
+
+type testFeedWithPointer struct {
+	a *uint64
+	b *string
+}
+
+type testFeed2 struct {
+	a uint64
+	b string
+	c []byte
+}
+
+func (r testFeed2) method1() {
+
+}
+
+type testFeed3 struct {
+	a    uint64
+	b    string
+	c, d []byte
+}
+
+func (r testFeed3) method1() {
+
+}
+
+func (r testFeed3) method2() {
+
+}
+
+func (r testFeed3) method3() {
+
+}
+
+type testFeedIface interface {
+	method1()
+	method2()
+}

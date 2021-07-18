@@ -41,14 +41,29 @@ var eth1DataNotification bool
 
 const eth1dataTimeout = 2 * time.Second
 
+// skipcq: SCC-U1000
 type eth1DataSingleVote struct {
 	eth1Data    *ethpb.Eth1Data
 	blockHeight *big.Int
 }
 
+// skipcq: SCC-U1000
 type eth1DataAggregatedVote struct {
 	data  eth1DataSingleVote
 	votes int
+}
+
+// BlockData required to create a beacon block.
+type BlockData struct {
+	ParentRoot        []byte
+	Graffiti          [32]byte
+	ProposerIdx       types.ValidatorIndex
+	Eth1Data          *ethpb.Eth1Data
+	Deposits          []*ethpb.Deposit
+	Attestations      []*ethpb.Attestation
+	ProposerSlashings []*ethpb.ProposerSlashing
+	AttesterSlashings []*ethpb.AttesterSlashing
+	VoluntaryExits    []*ethpb.SignedVoluntaryExit
 }
 
 // GetBlock is called by a proposer during its assigned slot to request a block to sign
@@ -57,6 +72,51 @@ func (vs *Server) GetBlock(ctx context.Context, req *ethpb.BlockRequest) (*ethpb
 	ctx, span := trace.StartSpan(ctx, "ProposerServer.GetBlock")
 	defer span.End()
 	span.AddAttributes(trace.Int64Attribute("slot", int64(req.Slot)))
+
+	blkData, err := vs.BuildBlockData(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Use zero hash as stub for state root to compute later.
+	stateRoot := params.BeaconConfig().ZeroHash[:]
+
+	blk := &ethpb.BeaconBlock{
+		Slot:          req.Slot,
+		ParentRoot:    blkData.ParentRoot,
+		StateRoot:     stateRoot,
+		ProposerIndex: blkData.ProposerIdx,
+		Body: &ethpb.BeaconBlockBody{
+			Eth1Data:          blkData.Eth1Data,
+			Deposits:          blkData.Deposits,
+			Attestations:      blkData.Attestations,
+			RandaoReveal:      req.RandaoReveal,
+			ProposerSlashings: blkData.ProposerSlashings,
+			AttesterSlashings: blkData.AttesterSlashings,
+			VoluntaryExits:    blkData.VoluntaryExits,
+			Graffiti:          blkData.Graffiti[:],
+		},
+	}
+
+	// Compute state root with the newly constructed block.
+	stateRoot, err = vs.ComputeStateRoot(
+		ctx, wrapper.WrappedPhase0SignedBeaconBlock(
+			&ethpb.SignedBeaconBlock{Block: blk, Signature: make([]byte, 96)},
+		),
+	)
+	if err != nil {
+		interop.WriteBlockToDisk(wrapper.WrappedPhase0SignedBeaconBlock(&ethpb.SignedBeaconBlock{Block: blk}), true /*failed*/)
+		return nil, status.Errorf(codes.Internal, "Could not compute state root: %v", err)
+	}
+	blk.StateRoot = stateRoot
+
+	return blk, nil
+}
+
+// BuildBlockData for creating a new beacon block, so that this method can be shared across forks.
+func (vs *Server) BuildBlockData(ctx context.Context, req *ethpb.BlockRequest) (*BlockData, error) {
+	ctx, span := trace.StartSpan(ctx, "ProposerServer.BuildBlockData")
+	defer span.End()
 
 	if vs.SyncChecker.Syncing() {
 		return nil, status.Errorf(codes.Unavailable, "Syncing to latest head, not ready to respond")
@@ -90,20 +150,17 @@ func (vs *Server) GetBlock(ctx context.Context, req *ethpb.BlockRequest) (*ethpb
 		return nil, status.Errorf(codes.Internal, "Could not get ETH1 data: %v", err)
 	}
 
-	// Pack ETH1 deposits which have not been included in the beacon chain.
+	// Pack ETH1 Deposits which have not been included in the beacon chain.
 	deposits, err := vs.deposits(ctx, head, eth1Data)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not get ETH1 deposits: %v", err)
+		return nil, status.Errorf(codes.Internal, "Could not get ETH1 Deposits: %v", err)
 	}
 
-	// Pack aggregated attestations which have not been included in the beacon chain.
+	// Pack aggregated Attestations which have not been included in the beacon chain.
 	atts, err := vs.packAttestations(ctx, head)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not get attestations to pack into block: %v", err)
+		return nil, status.Errorf(codes.Internal, "Could not get Attestations to pack into block: %v", err)
 	}
-
-	// Use zero hash as stub for state root to compute later.
-	stateRoot := params.BeaconConfig().ZeroHash[:]
 
 	graffiti := bytesutil.ToBytes32(req.Graffiti)
 
@@ -113,38 +170,30 @@ func (vs *Server) GetBlock(ctx context.Context, req *ethpb.BlockRequest) (*ethpb
 		return nil, status.Errorf(codes.Internal, "Could not calculate proposer index %v", err)
 	}
 
-	blk := &ethpb.BeaconBlock{
-		Slot:          req.Slot,
-		ParentRoot:    parentRoot,
-		StateRoot:     stateRoot,
-		ProposerIndex: idx,
-		Body: &ethpb.BeaconBlockBody{
-			Eth1Data:          eth1Data,
-			Deposits:          deposits,
-			Attestations:      atts,
-			RandaoReveal:      req.RandaoReveal,
-			ProposerSlashings: vs.SlashingsPool.PendingProposerSlashings(ctx, head, false /*noLimit*/),
-			AttesterSlashings: vs.SlashingsPool.PendingAttesterSlashings(ctx, head, false /*noLimit*/),
-			VoluntaryExits:    vs.ExitPool.PendingExits(head, req.Slot, false /*noLimit*/),
-			Graffiti:          graffiti[:],
-		},
-	}
-
-	// Compute state root with the newly constructed block.
-	stateRoot, err = vs.computeStateRoot(ctx, wrapper.WrappedPhase0SignedBeaconBlock(&ethpb.SignedBeaconBlock{Block: blk, Signature: make([]byte, 96)}))
-	if err != nil {
-		interop.WriteBlockToDisk(wrapper.WrappedPhase0SignedBeaconBlock(&ethpb.SignedBeaconBlock{Block: blk}), true /*failed*/)
-		return nil, status.Errorf(codes.Internal, "Could not compute state root: %v", err)
-	}
-	blk.StateRoot = stateRoot
-
-	return blk, nil
+	return &BlockData{
+		ParentRoot:        parentRoot,
+		Graffiti:          graffiti,
+		ProposerIdx:       idx,
+		Eth1Data:          eth1Data,
+		Deposits:          deposits,
+		Attestations:      atts,
+		ProposerSlashings: vs.SlashingsPool.PendingProposerSlashings(ctx, head, false /*noLimit*/),
+		AttesterSlashings: vs.SlashingsPool.PendingAttesterSlashings(ctx, head, false /*noLimit*/),
+		VoluntaryExits:    vs.ExitPool.PendingExits(head, req.Slot, false /*noLimit*/),
+	}, nil
 }
 
 // ProposeBlock is called by a proposer during its assigned slot to create a block in an attempt
 // to get it processed by the beacon node as the canonical head.
 func (vs *Server) ProposeBlock(ctx context.Context, rBlk *ethpb.SignedBeaconBlock) (*ethpb.ProposeResponse, error) {
 	blk := wrapper.WrappedPhase0SignedBeaconBlock(rBlk)
+	return vs.ProposeBlockGeneric(ctx, blk)
+}
+
+// ProposeBlockGeneric performs the core post-block creation actions once a block proposal is received.
+func (vs *Server) ProposeBlockGeneric(ctx context.Context, blk interfaces.SignedBeaconBlock) (*ethpb.ProposeResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "ProposerServer.proposeBlock")
+	defer span.End()
 	root, err := blk.Block().HashTreeRoot()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not tree hash block: %v", err)
@@ -253,6 +302,7 @@ func (vs *Server) slotStartTime(slot types.Slot) uint64 {
 	return helpers.VotingPeriodStartTime(startTime, slot)
 }
 
+// skipcq: SCC-U1000
 func (vs *Server) inRangeVotes(ctx context.Context,
 	beaconState iface.ReadOnlyBeaconState,
 	firstValidBlockNumber, lastValidBlockNumber *big.Int) ([]eth1DataSingleVote, error) {
@@ -280,6 +330,7 @@ func (vs *Server) inRangeVotes(ctx context.Context,
 	return inRangeVotes, nil
 }
 
+// skipcq: SCC-U1000
 func chosenEth1DataMajorityVote(votes []eth1DataSingleVote) eth1DataAggregatedVote {
 	var voteCount []eth1DataAggregatedVote
 	for _, singleVote := range votes {
@@ -365,9 +416,9 @@ func (vs *Server) randomETH1DataVote(ctx context.Context) (*ethpb.Eth1Data, erro
 	}, nil
 }
 
-// computeStateRoot computes the state root after a block has been processed through a state transition and
+// ComputeStateRoot computes the state root after a block has been processed through a state transition and
 // returns it to the validator client.
-func (vs *Server) computeStateRoot(ctx context.Context, block interfaces.SignedBeaconBlock) ([]byte, error) {
+func (vs *Server) ComputeStateRoot(ctx context.Context, block interfaces.SignedBeaconBlock) ([]byte, error) {
 	beaconState, err := vs.StateGen.StateByRoot(ctx, bytesutil.ToBytes32(block.Block().ParentRoot()))
 	if err != nil {
 		return nil, errors.Wrap(err, "could not retrieve beacon state")
@@ -395,14 +446,14 @@ func (vs *Server) deposits(
 	beaconState iface.BeaconState,
 	currentVote *ethpb.Eth1Data,
 ) ([]*ethpb.Deposit, error) {
-	ctx, span := trace.StartSpan(ctx, "ProposerServer.deposits")
+	ctx, span := trace.StartSpan(ctx, "ProposerServer.Deposits")
 	defer span.End()
 
 	if vs.MockEth1Votes || !vs.Eth1InfoFetcher.IsConnectedToETH1() {
 		return []*ethpb.Deposit{}, nil
 	}
-	// Need to fetch if the deposits up to the state's latest eth 1 data matches
-	// the number of all deposits in this RPC call. If not, then we return nil.
+	// Need to fetch if the Deposits up to the state's latest eth 1 data matches
+	// the number of all Deposits in this RPC call. If not, then we return nil.
 	canonicalEth1Data, canonicalEth1DataHeight, err := vs.canonicalEth1Data(ctx, beaconState, currentVote)
 	if err != nil {
 		return nil, err
@@ -413,7 +464,7 @@ func (vs *Server) deposits(
 		return []*ethpb.Deposit{}, nil
 	}
 
-	// If there are no pending deposits, exit early.
+	// If there are no pending Deposits, exit early.
 	allPendingContainers := vs.PendingDepositsFetcher.PendingContainers(ctx, canonicalEth1DataHeight)
 	if len(allPendingContainers) == 0 {
 		return []*ethpb.Deposit{}, nil
@@ -425,7 +476,7 @@ func (vs *Server) deposits(
 	}
 
 	// Deposits need to be received in order of merkle index root, so this has to make sure
-	// deposits are sorted from lowest to highest.
+	// Deposits are sorted from lowest to highest.
 	var pendingDeps []*dbpb.DepositContainer
 	for _, dep := range allPendingContainers {
 		if uint64(dep.Index) >= beaconState.Eth1DepositIndex() && uint64(dep.Index) < canonicalEth1Data.DepositCount {
@@ -434,7 +485,7 @@ func (vs *Server) deposits(
 	}
 
 	for i := range pendingDeps {
-		// Don't construct merkle proof if the number of deposits is more than max allowed in block.
+		// Don't construct merkle proof if the number of Deposits is more than max allowed in block.
 		if uint64(i) == params.BeaconConfig().MaxDeposits {
 			break
 		}
@@ -443,7 +494,7 @@ func (vs *Server) deposits(
 			return nil, err
 		}
 	}
-	// Limit the return of pending deposits to not be more than max deposits allowed in block.
+	// Limit the return of pending Deposits to not be more than max Deposits allowed in block.
 	var pendingDeposits []*ethpb.Deposit
 	for i := uint64(0); i < uint64(len(pendingDeps)) && i < params.BeaconConfig().MaxDeposits; i++ {
 		pendingDeposits = append(pendingDeposits, pendingDeps[i].Deposit)
@@ -565,7 +616,7 @@ func (vs *Server) defaultEth1DataResponse(ctx context.Context, currentHeight *bi
 	if err != nil {
 		return nil, errors.Wrap(err, "could not fetch ETH1_FOLLOW_DISTANCE ancestor")
 	}
-	// Fetch all historical deposits up to an ancestor height.
+	// Fetch all historical Deposits up to an ancestor height.
 	depositsTillHeight, depositRoot := vs.DepositFetcher.DepositsNumberAndRootAtHeight(ctx, ancestorHeight)
 	if depositsTillHeight == 0 {
 		return vs.ChainStartFetcher.ChainStartEth1Data(), nil
@@ -582,7 +633,7 @@ func (vs *Server) defaultEth1DataResponse(ctx context.Context, currentHeight *bi
 	}, nil
 }
 
-// This filters the input attestations to return a list of valid attestations to be packaged inside a beacon block.
+// This filters the input Attestations to return a list of valid Attestations to be packaged inside a beacon block.
 func (vs *Server) filterAttestationsForBlockInclusion(ctx context.Context, st iface.BeaconState, atts []*ethpb.Attestation) ([]*ethpb.Attestation, error) {
 	ctx, span := trace.StartSpan(ctx, "ProposerServer.filterAttestationsForBlockInclusion")
 	defer span.End()
@@ -602,7 +653,7 @@ func (vs *Server) filterAttestationsForBlockInclusion(ctx context.Context, st if
 	return sorted.limitToMaxAttestations(), nil
 }
 
-// The input attestations are processed and seen by the node, this deletes them from pool
+// The input Attestations are processed and seen by the node, this deletes them from pool
 // so proposers don't include them in a block for the future.
 func (vs *Server) deleteAttsInPool(ctx context.Context, atts []*ethpb.Attestation) error {
 	ctx, span := trace.StartSpan(ctx, "ProposerServer.deleteAttsInPool")
@@ -631,7 +682,7 @@ func constructMerkleProof(trie *trieutil.SparseMerkleTrie, index int, deposit *e
 		return nil, errors.Wrapf(err, "could not generate merkle proof for deposit at index %d", index)
 	}
 	// For every deposit, we construct a Merkle proof using the powchain service's
-	// in-memory deposits trie, which is updated only once the state's LatestETH1Data
+	// in-memory Deposits trie, which is updated only once the state's LatestETH1Data
 	// property changes during a state transition after a voting period.
 	deposit.Proof = proof
 	return deposit, nil
@@ -644,19 +695,19 @@ func (vs *Server) packAttestations(ctx context.Context, latestState iface.Beacon
 	atts := vs.AttPool.AggregatedAttestations()
 	atts, err := vs.filterAttestationsForBlockInclusion(ctx, latestState, atts)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not filter attestations")
+		return nil, errors.Wrap(err, "could not filter Attestations")
 	}
 
-	// If there is any room left in the block, consider unaggregated attestations as well.
+	// If there is any room left in the block, consider unaggregated Attestations as well.
 	numAtts := uint64(len(atts))
 	if numAtts < params.BeaconConfig().MaxAttestations {
 		uAtts, err := vs.AttPool.UnaggregatedAttestations()
 		if err != nil {
-			return nil, errors.Wrap(err, "could not get unaggregated attestations")
+			return nil, errors.Wrap(err, "could not get unaggregated Attestations")
 		}
 		uAtts, err = vs.filterAttestationsForBlockInclusion(ctx, latestState, uAtts)
 		if err != nil {
-			return nil, errors.Wrap(err, "could not filter attestations")
+			return nil, errors.Wrap(err, "could not filter Attestations")
 		}
 		atts = append(atts, uAtts...)
 

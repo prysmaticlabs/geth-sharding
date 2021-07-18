@@ -1,4 +1,4 @@
-// Package eventsv1 defines a gRPC events service implementation,
+// Package events defines a gRPC events service implementation,
 // following the official API standards https://ethereum.github.io/eth2.0-APIs/#/.
 // This package includes the events endpoint.
 package events

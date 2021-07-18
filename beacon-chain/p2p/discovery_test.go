@@ -22,6 +22,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/prysmaticlabs/go-bitfield"
 	mock "github.com/prysmaticlabs/prysm/beacon-chain/blockchain/testing"
+	"github.com/prysmaticlabs/prysm/beacon-chain/cache"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/feed"
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/peers"
@@ -33,8 +34,10 @@ import (
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/iputils"
+	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/testutil/assert"
 	"github.com/prysmaticlabs/prysm/shared/testutil/require"
+	"github.com/prysmaticlabs/prysm/shared/version"
 	logTest "github.com/sirupsen/logrus/hooks/test"
 )
 
@@ -339,4 +342,164 @@ func addPeer(t *testing.T, p *peers.Status, state peerdata.PeerConnectionState) 
 		Attnets:   bitfield.NewBitvector64(),
 	}))
 	return id
+}
+
+func TestRefreshENR_ForkBoundaries(t *testing.T) {
+	params.SetupTestConfigCleanup(t)
+	// Clean up caches after usage.
+	defer cache.SubnetIDs.EmptyAllCaches()
+	defer cache.SubnetIDs.EmptyAllCaches()
+
+	tests := []struct {
+		name           string
+		svcBuilder     func(t *testing.T) *Service
+		postValidation func(t *testing.T, s *Service)
+	}{
+		{
+			name: "metadata no change",
+			svcBuilder: func(t *testing.T) *Service {
+				port := 2000
+				ipAddr, pkey := createAddrAndPrivKey(t)
+				s := &Service{
+					genesisTime:           time.Now(),
+					genesisValidatorsRoot: bytesutil.PadTo([]byte{'A'}, 32),
+					cfg:                   &Config{UDPPort: uint(port)},
+				}
+				listener, err := s.createListener(ipAddr, pkey)
+				assert.NoError(t, err)
+				s.dv5Listener = listener
+				s.metaData = wrapper.WrappedMetadataV0(new(pb.MetaDataV0))
+				s.updateSubnetRecordWithMetadata([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
+				return s
+			},
+			postValidation: func(t *testing.T, s *Service) {
+				assert.DeepEqual(t, bitfield.NewBitvector64(), s.metaData.AttnetsBitfield())
+			},
+		},
+		{
+			name: "metadata updated",
+			svcBuilder: func(t *testing.T) *Service {
+				port := 2000
+				ipAddr, pkey := createAddrAndPrivKey(t)
+				s := &Service{
+					genesisTime:           time.Now(),
+					genesisValidatorsRoot: bytesutil.PadTo([]byte{'A'}, 32),
+					cfg:                   &Config{UDPPort: uint(port)},
+				}
+				listener, err := s.createListener(ipAddr, pkey)
+				assert.NoError(t, err)
+				s.dv5Listener = listener
+				s.metaData = wrapper.WrappedMetadataV0(new(pb.MetaDataV0))
+				s.updateSubnetRecordWithMetadata([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01})
+				cache.SubnetIDs.AddPersistentCommittee([]byte{'A'}, []uint64{1, 2, 3, 23}, 0)
+				return s
+			},
+			postValidation: func(t *testing.T, s *Service) {
+				assert.DeepEqual(t, bitfield.Bitvector64{0xe, 0x0, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0}, s.metaData.AttnetsBitfield())
+			},
+		},
+		{
+			name: "metadata updated at fork epoch",
+			svcBuilder: func(t *testing.T) *Service {
+				port := 2000
+				ipAddr, pkey := createAddrAndPrivKey(t)
+				s := &Service{
+					genesisTime:           time.Now().Add(-5 * oneEpochDuration()),
+					genesisValidatorsRoot: bytesutil.PadTo([]byte{'A'}, 32),
+					cfg:                   &Config{UDPPort: uint(port)},
+				}
+				listener, err := s.createListener(ipAddr, pkey)
+				assert.NoError(t, err)
+
+				// Update params
+				cfg := params.BeaconConfig()
+				cfg.AltairForkEpoch = 5
+				params.OverrideBeaconConfig(cfg)
+				params.BeaconConfig().InitializeForkSchedule()
+
+				s.dv5Listener = listener
+				s.metaData = wrapper.WrappedMetadataV0(new(pb.MetaDataV0))
+				s.updateSubnetRecordWithMetadata([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01})
+				cache.SubnetIDs.AddPersistentCommittee([]byte{'A'}, []uint64{1, 2, 3, 23}, 0)
+				return s
+			},
+			postValidation: func(t *testing.T, s *Service) {
+				assert.Equal(t, version.Altair, s.metaData.Version())
+				assert.DeepEqual(t, bitfield.Bitvector4{0x00}, s.metaData.MetadataObjV1().Syncnets)
+				assert.DeepEqual(t, bitfield.Bitvector64{0xe, 0x0, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0}, s.metaData.AttnetsBitfield())
+			},
+		},
+		{
+			name: "metadata updated at fork epoch with no bitfield",
+			svcBuilder: func(t *testing.T) *Service {
+				port := 2000
+				ipAddr, pkey := createAddrAndPrivKey(t)
+				s := &Service{
+					genesisTime:           time.Now().Add(-5 * oneEpochDuration()),
+					genesisValidatorsRoot: bytesutil.PadTo([]byte{'A'}, 32),
+					cfg:                   &Config{UDPPort: uint(port)},
+				}
+				listener, err := s.createListener(ipAddr, pkey)
+				assert.NoError(t, err)
+
+				// Update params
+				cfg := params.BeaconConfig()
+				cfg.AltairForkEpoch = 5
+				params.OverrideBeaconConfig(cfg)
+				params.BeaconConfig().InitializeForkSchedule()
+
+				s.dv5Listener = listener
+				s.metaData = wrapper.WrappedMetadataV0(new(pb.MetaDataV0))
+				s.updateSubnetRecordWithMetadata([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
+				return s
+			},
+			postValidation: func(t *testing.T, s *Service) {
+				assert.Equal(t, version.Altair, s.metaData.Version())
+				assert.DeepEqual(t, bitfield.Bitvector4{0x00}, s.metaData.MetadataObjV1().Syncnets)
+				assert.DeepEqual(t, bitfield.Bitvector64{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, s.metaData.AttnetsBitfield())
+			},
+		},
+		{
+			name: "metadata updated past fork epoch with bitfields",
+			svcBuilder: func(t *testing.T) *Service {
+				port := 2000
+				ipAddr, pkey := createAddrAndPrivKey(t)
+				s := &Service{
+					genesisTime:           time.Now().Add(-6 * oneEpochDuration()),
+					genesisValidatorsRoot: bytesutil.PadTo([]byte{'A'}, 32),
+					cfg:                   &Config{UDPPort: uint(port)},
+				}
+				listener, err := s.createListener(ipAddr, pkey)
+				assert.NoError(t, err)
+
+				// Update params
+				cfg := params.BeaconConfig()
+				cfg.AltairForkEpoch = 5
+				params.OverrideBeaconConfig(cfg)
+				params.BeaconConfig().InitializeForkSchedule()
+
+				s.dv5Listener = listener
+				s.metaData = wrapper.WrappedMetadataV0(new(pb.MetaDataV0))
+				s.updateSubnetRecordWithMetadata([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
+				cache.SubnetIDs.AddPersistentCommittee([]byte{'A'}, []uint64{1, 2, 3, 23}, 0)
+				cache.SyncSubnetIDs.AddSyncCommitteeSubnets([]byte{'A'}, 0, []uint64{0, 1}, 0)
+				return s
+			},
+			postValidation: func(t *testing.T, s *Service) {
+				assert.Equal(t, version.Altair, s.metaData.Version())
+				assert.DeepEqual(t, bitfield.Bitvector4{0x03}, s.metaData.MetadataObjV1().Syncnets)
+				assert.DeepEqual(t, bitfield.Bitvector64{0xe, 0x0, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0}, s.metaData.AttnetsBitfield())
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := tt.svcBuilder(t)
+			s.RefreshENR()
+			tt.postValidation(t, s)
+			s.dv5Listener.Close()
+			cache.SubnetIDs.EmptyAllCaches()
+			cache.SyncSubnetIDs.EmptyAllCaches()
+		})
+	}
 }

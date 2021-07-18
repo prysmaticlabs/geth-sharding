@@ -9,6 +9,7 @@ import (
 	libp2pcore "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/peer"
 	types "github.com/prysmaticlabs/eth2-types"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
 	p2ptypes "github.com/prysmaticlabs/prysm/beacon-chain/p2p/types"
 	"github.com/prysmaticlabs/prysm/shared/timeutils"
@@ -77,7 +78,11 @@ func (s *Service) sendPingRequest(ctx context.Context, id peer.ID) error {
 	defer cancel()
 
 	metadataSeq := types.SSZUint64(s.cfg.P2P.MetadataSeq())
-	stream, err := s.cfg.P2P.Send(ctx, &metadataSeq, p2p.RPCPingTopicV1, id)
+	topic, err := p2p.TopicFromMessage(p2p.PingMessageName, helpers.SlotToEpoch(s.cfg.Chain.CurrentSlot()))
+	if err != nil {
+		return err
+	}
+	stream, err := s.cfg.P2P.Send(ctx, &metadataSeq, topic, id)
 	if err != nil {
 		return err
 	}
@@ -94,11 +99,6 @@ func (s *Service) sendPingRequest(ctx context.Context, id peer.ID) error {
 	if code != 0 {
 		s.cfg.P2P.Peers().Scorers().BadResponsesScorer().Increment(stream.Conn().RemotePeer())
 		return errors.New(errMsg)
-	}
-	// No-op for now with the rpc context.
-	_, err = readContextFromStream(stream, s.cfg.Chain)
-	if err != nil {
-		return err
 	}
 	msg := new(types.SSZUint64)
 	if err := s.cfg.P2P.Encoding().DecodeWithMaxLength(stream, msg); err != nil {

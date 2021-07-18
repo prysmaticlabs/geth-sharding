@@ -295,6 +295,8 @@ func TestService_roundRobinSync(t *testing.T) {
 				FinalizedCheckPoint: &eth.Checkpoint{
 					Epoch: 0,
 				},
+				Genesis:        time.Now(),
+				ValidatorsRoot: [32]byte{},
 			} // no-op mock
 			s := &Service{
 				ctx:          context.Background(),
@@ -338,6 +340,8 @@ func TestService_processBlock(t *testing.T) {
 			FinalizedCheckPoint: &eth.Checkpoint{
 				Epoch: 0,
 			},
+			Genesis:        time.Now(),
+			ValidatorsRoot: [32]byte{},
 		},
 		StateNotifier: &mock.MockStateNotifier{},
 	})
@@ -527,6 +531,8 @@ func TestService_blockProviderScoring(t *testing.T) {
 			Epoch: 0,
 			Root:  make([]byte, 32),
 		},
+		Genesis:        time.Now(),
+		ValidatorsRoot: [32]byte{},
 	} // no-op mock
 	s := &Service{
 		ctx:          context.Background(),
@@ -590,6 +596,8 @@ func TestService_syncToFinalizedEpoch(t *testing.T) {
 			Epoch: 0,
 			Root:  make([]byte, 32),
 		},
+		Genesis:        time.Now(),
+		ValidatorsRoot: [32]byte{},
 	}
 	s := &Service{
 		ctx:          context.Background(),

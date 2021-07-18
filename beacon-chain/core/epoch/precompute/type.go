@@ -37,6 +37,9 @@ type Validator struct {
 	BeforeEpochTransitionBalance uint64
 	// AfterEpochTransitionBalance is the validator balance after epoch transition.
 	AfterEpochTransitionBalance uint64
+
+	// InactivityScore of the validator. [New in Altair]
+	InactivityScore uint64
 }
 
 // Balance stores the pre computation of the total participated balances for a given epoch

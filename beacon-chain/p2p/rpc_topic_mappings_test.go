@@ -1,10 +1,15 @@
 package p2p
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
+	eth2types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/types"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
+	"github.com/prysmaticlabs/prysm/shared/bytesutil"
+	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/testutil/assert"
 	"github.com/prysmaticlabs/prysm/shared/testutil/require"
 )
@@ -34,9 +39,9 @@ func TestTopicDeconstructor(t *testing.T) {
 		},
 		{
 			name:          "valid status topic",
-			topic:         protocolPrefix + statusMessageName + SchemaVersionV1,
+			topic:         protocolPrefix + StatusMessageName + SchemaVersionV1,
 			expectedError: "",
-			output:        []string{protocolPrefix, statusMessageName, SchemaVersionV1},
+			output:        []string{protocolPrefix, StatusMessageName, SchemaVersionV1},
 		},
 		{
 			name:          "malformed status topic",
@@ -46,13 +51,13 @@ func TestTopicDeconstructor(t *testing.T) {
 		},
 		{
 			name:          "valid beacon block by range topic",
-			topic:         protocolPrefix + beaconBlocksByRangeMessageName + SchemaVersionV1 + "/ssz_snappy",
+			topic:         protocolPrefix + BeaconBlocksByRangeMessageName + SchemaVersionV1 + "/ssz_snappy",
 			expectedError: "",
-			output:        []string{protocolPrefix, beaconBlocksByRangeMessageName, SchemaVersionV1},
+			output:        []string{protocolPrefix, BeaconBlocksByRangeMessageName, SchemaVersionV1},
 		},
 		{
 			name:          "beacon block by range topic with malformed version",
-			topic:         protocolPrefix + beaconBlocksByRangeMessageName + "/v" + "/ssz_snappy",
+			topic:         protocolPrefix + BeaconBlocksByRangeMessageName + "/v" + "/ssz_snappy",
 			expectedError: "unable to find a valid schema version for /eth2/beacon_chain/req/beacon_blocks_by_range/v/ssz_snappy",
 			output:        []string{""},
 		},
@@ -71,5 +76,47 @@ func TestTopicDeconstructor(t *testing.T) {
 				assert.Equal(t, test.output[2], version)
 			}
 		})
+	}
+}
+
+func TestTopicFromMessage_CorrectType(t *testing.T) {
+	params.SetupTestConfigCleanup(t)
+	bCfg := params.BeaconConfig()
+	forkEpoch := eth2types.Epoch(100)
+	bCfg.AltairForkEpoch = forkEpoch
+	bCfg.ForkVersionSchedule[bytesutil.ToBytes4(bCfg.AltairForkVersion)] = eth2types.Epoch(100)
+	params.OverrideBeaconConfig(bCfg)
+
+	// Garbage Message
+	badMsg := "wljdjska"
+	_, err := TopicFromMessage(badMsg, 0)
+	assert.ErrorContains(t, fmt.Sprintf("%s: %s", invalidRPCMessageType, badMsg), err)
+	// Before Fork
+	for m := range messageMapping {
+		topic, err := TopicFromMessage(m, 0)
+		assert.NoError(t, err)
+
+		assert.Equal(t, true, strings.Contains(topic, SchemaVersionV1))
+		_, _, version, err := TopicDeconstructor(topic)
+		assert.NoError(t, err)
+		assert.Equal(t, SchemaVersionV1, version)
+	}
+
+	// After Fork
+	for m := range messageMapping {
+		topic, err := TopicFromMessage(m, forkEpoch)
+		assert.NoError(t, err)
+
+		if altairMapping[m] {
+			assert.Equal(t, true, strings.Contains(topic, SchemaVersionV2))
+			_, _, version, err := TopicDeconstructor(topic)
+			assert.NoError(t, err)
+			assert.Equal(t, SchemaVersionV2, version)
+		} else {
+			assert.Equal(t, true, strings.Contains(topic, SchemaVersionV1))
+			_, _, version, err := TopicDeconstructor(topic)
+			assert.NoError(t, err)
+			assert.Equal(t, SchemaVersionV1, version)
+		}
 	}
 }

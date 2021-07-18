@@ -144,7 +144,7 @@ func TestStartDiscv5_SameForkDigests_DifferentNextForkData(t *testing.T) {
 
 		c := params.BeaconConfig()
 		nextForkEpoch := types.Epoch(i)
-		c.NextForkEpoch = nextForkEpoch
+		c.ForkVersionSchedule[[4]byte{'A', 'B', 'C', 'D'}] = nextForkEpoch
 		params.OverrideBeaconConfig(c)
 
 		// We give every peer a different genesis validators root, which
@@ -209,14 +209,12 @@ func TestStartDiscv5_SameForkDigests_DifferentNextForkData(t *testing.T) {
 func TestDiscv5_AddRetrieveForkEntryENR(t *testing.T) {
 	params.SetupTestConfigCleanup(t)
 	c := params.BeaconConfig()
-	c.ForkVersionSchedule = map[types.Epoch][]byte{
-		0: params.BeaconConfig().GenesisForkVersion,
-		1: {0, 0, 0, 1},
+	c.ForkVersionSchedule = map[[4]byte]types.Epoch{
+		bytesutil.ToBytes4(params.BeaconConfig().GenesisForkVersion): 0,
+		{0, 0, 0, 1}: 1,
 	}
 	nextForkEpoch := types.Epoch(1)
 	nextForkVersion := []byte{0, 0, 0, 1}
-	c.NextForkEpoch = nextForkEpoch
-	c.NextForkVersion = nextForkVersion
 	params.OverrideBeaconConfig(c)
 
 	genesisTime := time.Now()
@@ -255,6 +253,7 @@ func TestDiscv5_AddRetrieveForkEntryENR(t *testing.T) {
 }
 
 func TestAddForkEntry_Genesis(t *testing.T) {
+	params.SetupTestConfigCleanup(t)
 	temp := t.TempDir()
 	randNum := rand.Int()
 	tempPath := path.Join(temp, strconv.Itoa(randNum))
@@ -263,6 +262,11 @@ func TestAddForkEntry_Genesis(t *testing.T) {
 	require.NoError(t, err, "Could not get private key")
 	db, err := enode.OpenDB("")
 	require.NoError(t, err)
+
+	bCfg := params.BeaconConfig()
+	bCfg.ForkVersionSchedule = map[[4]byte]types.Epoch{}
+	bCfg.ForkVersionSchedule[bytesutil.ToBytes4(params.BeaconConfig().GenesisForkVersion)] = bCfg.GenesisEpoch
+	params.OverrideBeaconConfig(bCfg)
 
 	localNode := enode.NewLocalNode(db, pkey)
 	localNode, err = addForkEntry(localNode, time.Now().Add(10*time.Second), bytesutil.PadTo([]byte{'A', 'B', 'C', 'D'}, 32))

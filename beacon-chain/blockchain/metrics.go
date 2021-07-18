@@ -3,15 +3,18 @@ package blockchain
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	types "github.com/prysmaticlabs/eth2-types"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/altair"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/epoch/precompute"
 	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/proto/interfaces"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/params"
+	"github.com/prysmaticlabs/prysm/shared/version"
 )
 
 var (
@@ -206,14 +209,31 @@ func reportEpochMetrics(ctx context.Context, postState, headState iface.BeaconSt
 	beaconFinalizedRoot.Set(float64(bytesutil.ToLowInt64(postState.FinalizedCheckpoint().Root)))
 	currentEth1DataDepositCount.Set(float64(postState.Eth1Data().DepositCount))
 
-	// Validator participation should be viewed on the canonical chain.
-	v, b, err := precompute.New(ctx, headState)
-	if err != nil {
-		return err
-	}
-	_, b, err = precompute.ProcessAttestations(ctx, headState, v, b)
-	if err != nil {
-		return err
+	var b *precompute.Balance
+	var v []*precompute.Validator
+	var err error
+	switch headState.Version() {
+	case version.Phase0:
+		// Validator participation should be viewed on the canonical chain.
+		v, b, err = precompute.New(ctx, headState)
+		if err != nil {
+			return err
+		}
+		_, b, err = precompute.ProcessAttestations(ctx, headState, v, b)
+		if err != nil {
+			return err
+		}
+	case version.Altair:
+		v, b, err = altair.InitializeEpochValidators(ctx, headState)
+		if err != nil {
+			return err
+		}
+		_, b, err = altair.ProcessEpochParticipation(ctx, headState, b, v)
+		if err != nil {
+			return err
+		}
+	default:
+		return errors.Errorf("invalid state type provided: %T", headState.InnerStateUnsafe())
 	}
 	prevEpochActiveBalances.Set(float64(b.ActivePrevEpoch))
 	prevEpochSourceBalances.Set(float64(b.PrevEpochAttested))

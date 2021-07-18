@@ -14,6 +14,7 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/peers"
 	"github.com/prysmaticlabs/prysm/proto/beacon/p2p"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -35,6 +36,7 @@ type P2P interface {
 type Broadcaster interface {
 	Broadcast(context.Context, proto.Message) error
 	BroadcastAttestation(ctx context.Context, subnet uint64, att *ethpb.Attestation) error
+	BroadcastSyncCommitteeMessage(ctx context.Context, subnet uint64, sMsg *prysmv2.SyncCommitteeMessage) error
 }
 
 // SetStreamHandler configures p2p to handle streams of a certain topic ID.

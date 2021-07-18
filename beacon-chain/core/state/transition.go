@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/cache"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/altair"
 	b "github.com/prysmaticlabs/prysm/beacon-chain/core/blocks"
 	e "github.com/prysmaticlabs/prysm/beacon-chain/core/epoch"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/epoch/precompute"
@@ -21,6 +22,7 @@ import (
 	"github.com/prysmaticlabs/prysm/shared/mathutil"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/traceutil"
+	"github.com/prysmaticlabs/prysm/shared/version"
 	"go.opencensus.io/trace"
 )
 
@@ -221,7 +223,7 @@ func ProcessSlots(ctx context.Context, state iface.BeaconState, slot types.Slot)
 	}
 
 	highestSlot := state.Slot()
-	key, err := cacheKey(ctx, state)
+	key, err := CacheKey(ctx, state)
 	if err != nil {
 		return nil, err
 	}
@@ -272,15 +274,34 @@ func ProcessSlots(ctx context.Context, state iface.BeaconState, slot types.Slot)
 			return nil, errors.Wrap(err, "could not process slot")
 		}
 		if CanProcessEpoch(state) {
-			state, err = ProcessEpochPrecompute(ctx, state)
-			if err != nil {
-				traceutil.AnnotateError(span, err)
-				return nil, errors.Wrap(err, "could not process epoch with optimizations")
+			switch state.Version() {
+			case version.Phase0:
+				state, err = ProcessEpochPrecompute(ctx, state)
+				if err != nil {
+					traceutil.AnnotateError(span, err)
+					return nil, errors.Wrap(err, "could not process epoch with optimizations")
+				}
+			case version.Altair:
+				state, err = altair.ProcessEpoch(ctx, state)
+				if err != nil {
+					traceutil.AnnotateError(span, err)
+					return nil, errors.Wrap(err, "could not process epoch")
+				}
+			default:
+				return nil, errors.New("beacon state should have a version")
 			}
 		}
 		if err := state.SetSlot(state.Slot() + 1); err != nil {
 			traceutil.AnnotateError(span, err)
 			return nil, errors.Wrap(err, "failed to increment state slot")
+		}
+
+		// Transition to Altair state.
+		if helpers.IsEpochStart(state.Slot()) && helpers.SlotToEpoch(state.Slot()) == params.BeaconConfig().AltairForkEpoch {
+			state, err = altair.UpgradeToAltair(state)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

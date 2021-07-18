@@ -671,7 +671,7 @@ func RegisterBeaconNodeValidatorAltairHandlerClient(ctx context.Context, mux *ru
 }
 
 var (
-	pattern_BeaconNodeValidatorAltair_GetBlock_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"eth", "v2prysm", "validator", "block"}, ""))
+	pattern_BeaconNodeValidatorAltair_GetBlock_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"prysm", "v2", "validator", "block"}, ""))
 
 	pattern_BeaconNodeValidatorAltair_ProposeBlock_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"prysm", "v2", "validator", "block"}, ""))
 

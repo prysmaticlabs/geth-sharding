@@ -1,0 +1,37 @@
+load("@prysm//tools/go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "contribution.go",
+        "error.go",
+        "kv.go",
+        "message.go",
+        "metric.go",
+        "pool.go",
+    ],
+    importpath = "github.com/prysmaticlabs/prysm/beacon-chain/operations/synccommittee",
+    visibility = ["//beacon-chain:__subpackages__"],
+    deps = [
+        "//proto/prysm/v2:go_default_library",
+        "//shared/copyutil:go_default_library",
+        "//shared/queue:go_default_library",
+        "@com_github_pkg_errors//:go_default_library",
+        "@com_github_prometheus_client_golang//prometheus:go_default_library",
+        "@com_github_prometheus_client_golang//prometheus/promauto:go_default_library",
+        "@com_github_prysmaticlabs_eth2_types//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "contribution_test.go",
+        "message_test.go",
+    ],
+    embed = [":go_default_library"],
+    deps = [
+        "//proto/prysm/v2:go_default_library",
+        "//shared/testutil/require:go_default_library",
+    ],
+)

@@ -356,6 +356,8 @@ func TestService_BatchRootRequest(t *testing.T) {
 					Epoch: 1,
 					Root:  make([]byte, 32),
 				},
+				ValidatorsRoot: [32]byte{},
+				Genesis:        time.Now(),
 			},
 		},
 		slotToPendingBlocks: gcache.New(time.Second, 2*time.Second),

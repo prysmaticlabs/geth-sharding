@@ -26,6 +26,7 @@ go_library(
     deps = [
         "//beacon-chain/cache:go_default_library",
         "//beacon-chain/cache/depositcache:go_default_library",
+        "//beacon-chain/core/altair:go_default_library",
         "//beacon-chain/core/epoch/precompute:go_default_library",
         "//beacon-chain/core/feed:go_default_library",
         "//beacon-chain/core/feed/state:go_default_library",
@@ -57,6 +58,7 @@ go_library(
         "//shared/slotutil:go_default_library",
         "//shared/timeutils:go_default_library",
         "//shared/traceutil:go_default_library",
+        "//shared/version:go_default_library",
         "@com_github_emicklei_dot//:go_default_library",
         "@com_github_pkg_errors//:go_default_library",
         "@com_github_prometheus_client_golang//prometheus:go_default_library",
@@ -111,6 +113,7 @@ go_test(
         "//proto/beacon/p2p/v1:go_default_library",
         "//proto/eth/v1alpha1:go_default_library",
         "//proto/eth/v1alpha1/wrapper:go_default_library",
+        "//proto/prysm/v2:go_default_library",
         "//shared/bytesutil:go_default_library",
         "//shared/event:go_default_library",
         "//shared/params:go_default_library",

@@ -235,7 +235,7 @@ func (p *Status) SetMetadata(pid peer.ID, metaData p2p.Metadata) {
 	defer p.store.Unlock()
 
 	peerData := p.store.PeerDataGetOrCreate(pid)
-	peerData.MetaData = metaData
+	peerData.MetaData = metaData.Copy()
 }
 
 // Metadata returns a copy of the metadata corresponding to the provided

@@ -11,7 +11,7 @@ go_test(
         "justification_and_finalization_test.go",
         "participation_record_updates_test.go",
         "randao_mixes_reset_test.go",
-        "registry_test.go",
+        "registry_updates_test.go",
         "rewards_and_penalties_test.go",
         "slashings_reset_test.go",
         "slashings_test.go",

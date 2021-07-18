@@ -11,6 +11,13 @@ type ReadOnlyValidator struct {
 	validator *ethpb.Validator
 }
 
+// NewValidator initializes the read only wrapper for validator.
+func NewValidator(v *ethpb.Validator) *ReadOnlyValidator {
+	return &ReadOnlyValidator{
+		validator: v,
+	}
+}
+
 // EffectiveBalance returns the effective balance of the
 // read only validator.
 func (v ReadOnlyValidator) EffectiveBalance() uint64 {

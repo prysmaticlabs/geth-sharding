@@ -2,9 +2,11 @@ package beacon
 
 import (
 	"context"
+	"encoding/hex"
 	"testing"
 
 	types "github.com/prysmaticlabs/eth2-types"
+	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/testutil/assert"
 	"github.com/prysmaticlabs/prysm/shared/testutil/require"
@@ -41,6 +43,8 @@ func TestGetSpec(t *testing.T) {
 	config.EjectionBalance = 22
 	config.EffectiveBalanceIncrement = 23
 	config.GenesisForkVersion = []byte("GenesisForkVersion")
+	config.AltairForkVersion = []byte("AltairForkVersion")
+	config.AltairForkEpoch = 100
 	config.BLSWithdrawalPrefixByte = byte('b')
 	config.GenesisDelay = 24
 	config.SecondsPerSlot = 25
@@ -61,13 +65,30 @@ func TestGetSpec(t *testing.T) {
 	config.WhistleBlowerRewardQuotient = 40
 	config.ProposerRewardQuotient = 41
 	config.InactivityPenaltyQuotient = 42
-	config.MinSlashingPenaltyQuotient = 43
-	config.ProportionalSlashingMultiplier = 44
-	config.MaxProposerSlashings = 45
-	config.MaxAttesterSlashings = 46
-	config.MaxAttestations = 47
-	config.MaxDeposits = 48
-	config.MaxVoluntaryExits = 49
+	config.MinSlashingPenaltyQuotient = 44
+	config.ProportionalSlashingMultiplier = 46
+	config.MaxProposerSlashings = 48
+	config.MaxAttesterSlashings = 49
+	config.MaxAttestations = 50
+	config.MaxDeposits = 51
+	config.MaxVoluntaryExits = 52
+	config.TimelyHeadFlagIndex = 53
+	config.TimelySourceFlagIndex = 54
+	config.TimelyTargetFlagIndex = 55
+	config.TimelyHeadWeight = 56
+	config.TimelySourceWeight = 57
+	config.TimelyTargetWeight = 58
+	config.SyncRewardWeight = 59
+	config.WeightDenominator = 60
+	config.TargetAggregatorsPerSyncSubcommittee = 61
+	config.SyncCommitteeSubnetCount = 62
+	config.SyncCommitteeSize = 63
+	config.InactivityScoreBias = 65
+	config.EpochsPerSyncCommitteePeriod = 66
+	config.InactivityPenaltyQuotientAltair = 67
+	config.MinSlashingPenaltyQuotientAltair = 68
+	config.ProportionalSlashingMultiplierAltair = 69
+	config.InactivityScoreRecoveryRate = 70
 
 	var dbp [4]byte
 	copy(dbp[:], []byte{'0', '0', '0', '1'})
@@ -97,7 +118,7 @@ func TestGetSpec(t *testing.T) {
 	resp, err := server.GetSpec(context.Background(), &emptypb.Empty{})
 	require.NoError(t, err)
 
-	assert.Equal(t, 60, len(resp.Data))
+	assert.Equal(t, 83, len(resp.Data))
 	for k, v := range resp.Data {
 		switch k {
 		case "CONFIG_NAME":
@@ -151,7 +172,11 @@ func TestGetSpec(t *testing.T) {
 		case "EFFECTIVE_BALANCE_INCREMENT":
 			assert.Equal(t, "23", v)
 		case "GENESIS_FORK_VERSION":
-			assert.Equal(t, "0x47656e65736973466f726b56657273696f6e", v)
+			assert.Equal(t, "0x"+hex.EncodeToString([]byte("GenesisForkVersion")), v)
+		case "ALTAIR_FORK_VERSION":
+			assert.Equal(t, "0x"+hex.EncodeToString([]byte("AltairForkVersion")), v)
+		case "ALTAIR_FORK_EPOCH":
+			assert.Equal(t, "100", v)
 		case "BLS_WITHDRAWAL_PREFIX":
 			assert.Equal(t, "0x62", v)
 		case "GENESIS_DELAY":
@@ -192,20 +217,64 @@ func TestGetSpec(t *testing.T) {
 			assert.Equal(t, "41", v)
 		case "INACTIVITY_PENALTY_QUOTIENT":
 			assert.Equal(t, "42", v)
-		case "MIN_SLASHING_PENALTY_QUOTIENT":
+		case "HF1_INACTIVITY_PENALTY_QUOTIENT":
 			assert.Equal(t, "43", v)
-		case "PROPORTIONAL_SLASHING_MULTIPLIER":
+		case "MIN_SLASHING_PENALTY_QUOTIENT":
 			assert.Equal(t, "44", v)
-		case "MAX_PROPOSER_SLASHINGS":
+		case "HF1_MIN_SLASHING_PENALTY_QUOTIENT":
 			assert.Equal(t, "45", v)
-		case "MAX_ATTESTER_SLASHINGS":
+		case "PROPORTIONAL_SLASHING_MULTIPLIER":
 			assert.Equal(t, "46", v)
-		case "MAX_ATTESTATIONS":
+		case "HF1_PROPORTIONAL_SLASHING_MULTIPLIER":
 			assert.Equal(t, "47", v)
-		case "MAX_DEPOSITS":
+		case "MAX_PROPOSER_SLASHINGS":
 			assert.Equal(t, "48", v)
-		case "MAX_VOLUNTARY_EXITS":
+		case "MAX_ATTESTER_SLASHINGS":
 			assert.Equal(t, "49", v)
+		case "MAX_ATTESTATIONS":
+			assert.Equal(t, "50", v)
+		case "MAX_DEPOSITS":
+			assert.Equal(t, "51", v)
+		case "MAX_VOLUNTARY_EXITS":
+			assert.Equal(t, "52", v)
+		case "TIMELY_HEAD_FLAG_INDEX":
+			assert.Equal(t, "0x35", v)
+		case "TIMELY_SOURCE_FLAG_INDEX":
+			assert.Equal(t, "0x36", v)
+		case "TIMELY_TARGET_FLAG_INDEX":
+			assert.Equal(t, "0x37", v)
+		case "TIMELY_HEAD_WEIGHT":
+			assert.Equal(t, "56", v)
+		case "TIMELY_SOURCE_WEIGHT":
+			assert.Equal(t, "57", v)
+		case "TIMELY_TARGET_WEIGHT":
+			assert.Equal(t, "58", v)
+		case "SYNC_REWARD_WEIGHT":
+			assert.Equal(t, "59", v)
+		case "WEIGHT_DENOMINATOR":
+			assert.Equal(t, "60", v)
+		case "TARGET_AGGREGATORS_PER_SYNC_SUBCOMMITTEE":
+			assert.Equal(t, "61", v)
+		case "SYNC_COMMITTEE_SUBNET_COUNT":
+			assert.Equal(t, "62", v)
+		case "SYNC_COMMITTEE_SIZE":
+			assert.Equal(t, "63", v)
+		case "SYNC_PUBKEYS_PER_AGGREGATE":
+			assert.Equal(t, "64", v)
+		case "INACTIVITY_SCORE_BIAS":
+			assert.Equal(t, "65", v)
+		case "EPOCHS_PER_SYNC_COMMITTEE_PERIOD":
+			assert.Equal(t, "66", v)
+		case "INACTIVITY_PENALTY_QUOTIENT_ALTAIR":
+			assert.Equal(t, "67", v)
+		case "MIN_SLASHING_PENALTY_QUOTIENT_ALTAIR":
+			assert.Equal(t, "68", v)
+		case "PROPORTIONAL_SLASHING_MULTIPLIER_ALTAIR":
+			assert.Equal(t, "69", v)
+		case "INACTIVITY_SCORE_RECOVERY_RATE":
+			assert.Equal(t, "70", v)
+		case "PROPOSER_WEIGHT":
+			assert.Equal(t, "8", v)
 		case "DOMAIN_BEACON_PROPOSER":
 			assert.Equal(t, "0x30303031", v)
 		case "DOMAIN_BEACON_ATTESTER":
@@ -220,6 +289,12 @@ func TestGetSpec(t *testing.T) {
 			assert.Equal(t, "0x30303036", v)
 		case "DOMAIN_AGGREGATE_AND_PROOF":
 			assert.Equal(t, "0x30303037", v)
+		case "DOMAIN_SYNC_COMMITTEE":
+			assert.Equal(t, "0x07000000", v)
+		case "DOMAIN_SYNC_COMMITTEE_SELECTION_PROOF":
+			assert.Equal(t, "0x08000000", v)
+		case "DOMAIN_CONTRIBUTION_AND_PROOF":
+			assert.Equal(t, "0x09000000", v)
 		default:
 			t.Errorf("Incorrect key: %s", k)
 		}
@@ -244,18 +319,18 @@ func TestGetDepositContract(t *testing.T) {
 
 func TestForkSchedule_Ok(t *testing.T) {
 	genesisForkVersion := []byte("Genesis")
-	firstForkVersion, firstForkEpoch := []byte("First"), types.Epoch(100)
-	secondForkVersion, secondForkEpoch := []byte("Second"), types.Epoch(200)
-	thirdForkVersion, thirdForkEpoch := []byte("Third"), types.Epoch(300)
+	firstForkVersion, firstForkEpoch := []byte("Firs"), types.Epoch(100)
+	secondForkVersion, secondForkEpoch := []byte("Seco"), types.Epoch(200)
+	thirdForkVersion, thirdForkEpoch := []byte("Thir"), types.Epoch(300)
 
 	params.SetupTestConfigCleanup(t)
 	config := params.BeaconConfig()
 	config.GenesisForkVersion = genesisForkVersion
 	// Create fork schedule adding keys in non-sorted order.
-	schedule := make(map[types.Epoch][]byte, 3)
-	schedule[secondForkEpoch] = secondForkVersion
-	schedule[firstForkEpoch] = firstForkVersion
-	schedule[thirdForkEpoch] = thirdForkVersion
+	schedule := make(map[[4]byte]types.Epoch, 3)
+	schedule[bytesutil.ToBytes4(secondForkVersion)] = secondForkEpoch
+	schedule[bytesutil.ToBytes4(firstForkVersion)] = firstForkEpoch
+	schedule[bytesutil.ToBytes4(thirdForkVersion)] = thirdForkEpoch
 	config.ForkVersionSchedule = schedule
 	params.OverrideBeaconConfig(config)
 
@@ -265,7 +340,7 @@ func TestForkSchedule_Ok(t *testing.T) {
 	require.Equal(t, 3, len(resp.Data))
 	fork := resp.Data[0]
 	assert.DeepEqual(t, genesisForkVersion, fork.PreviousVersion)
-	assert.DeepEqual(t, firstForkVersion, fork.CurrentVersion)
+	assert.DeepEqual(t, string(firstForkVersion), string(fork.CurrentVersion))
 	assert.Equal(t, firstForkEpoch, fork.Epoch)
 	fork = resp.Data[1]
 	assert.DeepEqual(t, firstForkVersion, fork.PreviousVersion)
@@ -277,9 +352,10 @@ func TestForkSchedule_Ok(t *testing.T) {
 	assert.Equal(t, thirdForkEpoch, fork.Epoch)
 }
 
-func TestForkSchedule_NoForks(t *testing.T) {
+func TestForkSchedule_CorrectNumberOfForks(t *testing.T) {
 	s := &Server{}
 	resp, err := s.GetForkSchedule(context.Background(), &emptypb.Empty{})
 	require.NoError(t, err)
-	assert.Equal(t, 0, len(resp.Data))
+	// Genesis and Altair.
+	assert.Equal(t, 2, len(resp.Data))
 }

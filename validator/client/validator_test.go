@@ -12,6 +12,7 @@ import (
 	"github.com/golang/mock/gomock"
 	types "github.com/prysmaticlabs/eth2-types"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
 	validatorpb "github.com/prysmaticlabs/prysm/proto/validator/accounts/v2"
 	"github.com/prysmaticlabs/prysm/shared/bls"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
@@ -638,9 +639,18 @@ func TestRolesAt_OK(t *testing.T) {
 	v.duties = &ethpb.DutiesResponse{
 		Duties: []*ethpb.DutiesResponse_Duty{
 			{
-				CommitteeIndex: 1,
-				AttesterSlot:   1,
-				PublicKey:      validatorKey.PublicKey().Marshal(),
+				CommitteeIndex:  1,
+				AttesterSlot:    1,
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				IsSyncCommittee: true,
+			},
+		},
+		NextEpochDuties: []*ethpb.DutiesResponse_Duty{
+			{
+				CommitteeIndex:  1,
+				AttesterSlot:    1,
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				IsSyncCommittee: true,
 			},
 		},
 	}
@@ -650,10 +660,52 @@ func TestRolesAt_OK(t *testing.T) {
 		gomock.Any(), // epoch
 	).Return(&ethpb.DomainResponse{SignatureDomain: make([]byte, 32)}, nil /*err*/)
 
+	m.validatorClientV2.EXPECT().GetSyncSubcommitteeIndex(
+		gomock.Any(), // ctx
+		&prysmv2.SyncSubcommitteeIndexRequest{
+			PublicKey: validatorKey.PublicKey().Marshal(),
+			Slot:      1,
+		},
+	).Return(&prysmv2.SyncSubcommitteeIndexResponse{}, nil /*err*/)
+
 	roleMap, err := v.RolesAt(context.Background(), 1)
 	require.NoError(t, err)
 
 	assert.Equal(t, iface.RoleAttester, roleMap[bytesutil.ToBytes48(validatorKey.PublicKey().Marshal())][0])
+	assert.Equal(t, iface.RoleAggregator, roleMap[bytesutil.ToBytes48(validatorKey.PublicKey().Marshal())][1])
+	assert.Equal(t, iface.RoleSyncCommittee, roleMap[bytesutil.ToBytes48(validatorKey.PublicKey().Marshal())][2])
+
+	// Test sync committee role at epoch boundary.
+	v.duties = &ethpb.DutiesResponse{
+		Duties: []*ethpb.DutiesResponse_Duty{
+			{
+				CommitteeIndex:  1,
+				AttesterSlot:    1,
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				IsSyncCommittee: false,
+			},
+		},
+		NextEpochDuties: []*ethpb.DutiesResponse_Duty{
+			{
+				CommitteeIndex:  1,
+				AttesterSlot:    1,
+				PublicKey:       validatorKey.PublicKey().Marshal(),
+				IsSyncCommittee: true,
+			},
+		},
+	}
+
+	m.validatorClientV2.EXPECT().GetSyncSubcommitteeIndex(
+		gomock.Any(), // ctx
+		&prysmv2.SyncSubcommitteeIndexRequest{
+			PublicKey: validatorKey.PublicKey().Marshal(),
+			Slot:      31,
+		},
+	).Return(&prysmv2.SyncSubcommitteeIndexResponse{}, nil /*err*/)
+
+	roleMap, err = v.RolesAt(context.Background(), params.BeaconConfig().SlotsPerEpoch-1)
+	require.NoError(t, err)
+	assert.Equal(t, iface.RoleSyncCommittee, roleMap[bytesutil.ToBytes48(validatorKey.PublicKey().Marshal())][0])
 }
 
 func TestRolesAt_DoesNotAssignProposer_Slot0(t *testing.T) {
@@ -921,21 +973,21 @@ func TestAllValidatorsAreExited_CorrectRequest(t *testing.T) {
 func TestService_ReceiveBlocks_NilBlock(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	client := mock.NewMockBeaconChainClient(ctrl)
-
+	valClient := mock.NewMockBeaconNodeValidatorAltairClient(ctrl)
 	v := validator{
-		beaconClient: client,
-		blockFeed:    new(event.Feed),
+		blockFeed:         new(event.Feed),
+		validatorClientV2: valClient,
 	}
-	stream := mock.NewMockBeaconChain_StreamBlocksClient(ctrl)
+	stream := mock.NewMockBeaconNodeValidatorAltair_StreamBlocksClient(ctrl)
 	ctx, cancel := context.WithCancel(context.Background())
-	client.EXPECT().StreamBlocks(
+	valClient.EXPECT().StreamBlocks(
 		gomock.Any(),
 		&ethpb.StreamBlocksRequest{VerifiedOnly: true},
 	).Return(stream, nil)
 	stream.EXPECT().Context().Return(ctx).AnyTimes()
 	stream.EXPECT().Recv().Return(
-		&ethpb.SignedBeaconBlock{},
+		&prysmv2.StreamBlocksResponse{Block: &prysmv2.StreamBlocksResponse_Phase0Block{
+			Phase0Block: &ethpb.SignedBeaconBlock{}}},
 		nil,
 	).Do(func() {
 		cancel()
@@ -948,13 +1000,13 @@ func TestService_ReceiveBlocks_NilBlock(t *testing.T) {
 func TestService_ReceiveBlocks_SetHighest(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	client := mock.NewMockBeaconChainClient(ctrl)
+	client := mock.NewMockBeaconNodeValidatorAltairClient(ctrl)
 
 	v := validator{
-		beaconClient: client,
-		blockFeed:    new(event.Feed),
+		validatorClientV2: client,
+		blockFeed:         new(event.Feed),
 	}
-	stream := mock.NewMockBeaconChain_StreamBlocksClient(ctrl)
+	stream := mock.NewMockBeaconNodeValidatorAltair_StreamBlocksClient(ctrl)
 	ctx, cancel := context.WithCancel(context.Background())
 	client.EXPECT().StreamBlocks(
 		gomock.Any(),
@@ -963,7 +1015,10 @@ func TestService_ReceiveBlocks_SetHighest(t *testing.T) {
 	stream.EXPECT().Context().Return(ctx).AnyTimes()
 	slot := types.Slot(100)
 	stream.EXPECT().Recv().Return(
-		&ethpb.SignedBeaconBlock{Block: &ethpb.BeaconBlock{Slot: slot}},
+		&prysmv2.StreamBlocksResponse{
+			Block: &prysmv2.StreamBlocksResponse_Phase0Block{
+				Phase0Block: &ethpb.SignedBeaconBlock{Block: &ethpb.BeaconBlock{Slot: slot, Body: &ethpb.BeaconBlockBody{}}}},
+		},
 		nil,
 	).Do(func() {
 		cancel()

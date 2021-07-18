@@ -46,7 +46,7 @@ service BeaconNodeValidatorAltair {
   // data for proposer to sign. This block is versioned from Altair onwards.
   rpc GetBlock(ethereum.eth.v1alpha1.BlockRequest) returns (BeaconBlockAltair) {
     option (google.api.http) = {
-      get: "/eth/v2prysm/validator/block"
+      get: "/prysm/v2/validator/block"
     };
   }
 

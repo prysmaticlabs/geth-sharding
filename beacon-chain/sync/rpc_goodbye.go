@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	types "github.com/prysmaticlabs/eth2-types"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
 	p2ptypes "github.com/prysmaticlabs/prysm/beacon-chain/p2p/types"
 	"github.com/prysmaticlabs/prysm/shared/mputil"
@@ -91,7 +92,11 @@ func (s *Service) sendGoodByeMessage(ctx context.Context, code p2ptypes.RPCGoodb
 	ctx, cancel := context.WithTimeout(ctx, respTimeout)
 	defer cancel()
 
-	stream, err := s.cfg.P2P.Send(ctx, &code, p2p.RPCGoodByeTopicV1, id)
+	topic, err := p2p.TopicFromMessage(p2p.GoodbyeMessageName, helpers.SlotToEpoch(s.cfg.Chain.CurrentSlot()))
+	if err != nil {
+		return err
+	}
+	stream, err := s.cfg.P2P.Send(ctx, &code, topic, id)
 	if err != nil {
 		return err
 	}

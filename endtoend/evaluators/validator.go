@@ -5,14 +5,19 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/endtoend/policies"
 	"github.com/prysmaticlabs/prysm/endtoend/types"
 	eth "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var expectedParticipation = 0.95 // 95% participation to make room for minor issues.
+
+var expectedSyncParticipation = 0.90 // 90% participation for sync committee members.
 
 // ValidatorsAreActive ensures the expected amount of validators are active.
 var ValidatorsAreActive = types.Evaluator{
@@ -26,6 +31,14 @@ var ValidatorsParticipating = types.Evaluator{
 	Name:       "validators_participating_epoch_%d",
 	Policy:     policies.AfterNthEpoch(2),
 	Evaluation: validatorsParticipating,
+}
+
+// ValidatorSyncParticipation ensures the expected amount of sync committee participants
+// are active.
+var ValidatorSyncParticipation = types.Evaluator{
+	Name:       "validator_sync_participation_%d",
+	Policy:     policies.AfterNthEpoch(params.AltairE2EForkEpoch - 1),
+	Evaluation: validatorsSyncParticipation,
 }
 
 func validatorsAreActive(conns ...*grpc.ClientConn) error {
@@ -99,6 +112,75 @@ func validatorsParticipating(conns ...*grpc.ClientConn) error {
 			expected,
 			partRate,
 		)
+	}
+	return nil
+}
+
+// validatorsSyncParticipation ensures the validators have an acceptable participation rate for
+// sync committee assignments.
+func validatorsSyncParticipation(conns ...*grpc.ClientConn) error {
+	conn := conns[0]
+	client := eth.NewNodeClient(conn)
+	altairClient := prysmv2.NewBeaconChainAltairClient(conn)
+	genesis, err := client.GetGenesis(context.Background(), &emptypb.Empty{})
+	if err != nil {
+		return errors.Wrap(err, "failed to get genesis data")
+	}
+	currSlot := helpers.CurrentSlot(uint64(genesis.GenesisTime.AsTime().Unix()))
+	currEpoch := helpers.SlotToEpoch(currSlot)
+	lowestBound := currEpoch - 1
+
+	// TODO: Fix Sync Participation in fork epoch.
+	if currEpoch == params.AltairE2EForkEpoch {
+		return nil
+	}
+	// TODO: Fix Sync Participation in fork epoch to allow
+	// blocks in the fork epoch from being evaluated.
+	if lowestBound == params.AltairE2EForkEpoch {
+		lowestBound++
+	}
+
+	if lowestBound < params.AltairE2EForkEpoch {
+		lowestBound = params.AltairE2EForkEpoch
+	}
+	blockCtrs, err := altairClient.ListBlocks(context.Background(), &eth.ListBlocksRequest{QueryFilter: &eth.ListBlocksRequest_Epoch{Epoch: lowestBound}})
+	if err != nil {
+		return errors.Wrap(err, "failed to get validator participation")
+	}
+	for _, ctr := range blockCtrs.BlockContainers {
+		if ctr.GetAltairBlock() == nil {
+			return errors.Errorf("Altair block type doesn't exist for block at epoch %d", lowestBound)
+		}
+		blk := ctr.GetAltairBlock()
+		if blk.Block == nil || blk.Block.Body == nil || blk.Block.Body.SyncAggregate == nil {
+			return errors.New("nil block provided")
+		}
+		syncAgg := blk.Block.Body.SyncAggregate
+		threshold := uint64(float64(syncAgg.SyncCommitteeBits.Len()) * expectedSyncParticipation)
+		if syncAgg.SyncCommitteeBits.Count() < threshold {
+			return errors.Errorf("In block of slot %d ,the aggregate bitvector with length of %d only got a count of %d", blk.Block.Slot, threshold, syncAgg.SyncCommitteeBits.Count())
+		}
+	}
+	if lowestBound == currEpoch {
+		return nil
+	}
+	blockCtrs, err = altairClient.ListBlocks(context.Background(), &eth.ListBlocksRequest{QueryFilter: &eth.ListBlocksRequest_Epoch{Epoch: currEpoch}})
+	if err != nil {
+		return errors.Wrap(err, "failed to get validator participation")
+	}
+	for _, ctr := range blockCtrs.BlockContainers {
+		if ctr.GetAltairBlock() == nil {
+			return errors.Errorf("Altair block type doesn't exist for block at epoch %d", lowestBound)
+		}
+		blk := ctr.GetAltairBlock()
+		if blk.Block == nil || blk.Block.Body == nil || blk.Block.Body.SyncAggregate == nil {
+			return errors.New("nil block provided")
+		}
+		syncAgg := blk.Block.Body.SyncAggregate
+		threshold := uint64(float64(syncAgg.SyncCommitteeBits.Len()) * expectedSyncParticipation)
+		if syncAgg.SyncCommitteeBits.Count() < threshold {
+			return errors.Errorf("In block of slot %d ,the aggregate bitvector with length of %d only got a count of %d", blk.Block.Slot, threshold, syncAgg.SyncCommitteeBits.Count())
+		}
 	}
 	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/prysmaticlabs/prysm/proto/interfaces"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/timeutils"
+	"github.com/prysmaticlabs/prysm/shared/version"
 	"github.com/sirupsen/logrus"
 )
 
@@ -32,6 +33,12 @@ func logStateTransitionData(b interfaces.BeaconBlock) {
 	}
 	if len(b.Body().VoluntaryExits()) > 0 {
 		log = log.WithField("voluntaryExits", len(b.Body().VoluntaryExits()))
+	}
+	if b.Version() == version.Altair {
+		agg, err := b.Body().SyncAggregate()
+		if err == nil {
+			log = log.WithField("syncBitsCount", agg.SyncCommitteeBits.Count())
+		}
 	}
 	log.Info("Finished applying state transition")
 }

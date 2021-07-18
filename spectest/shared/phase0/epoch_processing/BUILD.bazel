@@ -11,7 +11,7 @@ go_library(
         "justification_and_finalization.go",
         "participation_record_updates.go",
         "randao_mixes_reset.go",
-        "registry.go",
+        "registry_updates.go",
         "rewards_and_penalties.go",
         "slashings.go",
         "slashings_reset.go",

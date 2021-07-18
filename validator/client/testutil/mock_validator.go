@@ -169,6 +169,9 @@ func (fv *FakeValidator) ProposeBlock(_ context.Context, slot types.Slot, _ [48]
 // SubmitAggregateAndProof for mocking.
 func (fv *FakeValidator) SubmitAggregateAndProof(_ context.Context, _ types.Slot, _ [48]byte) {}
 
+// SubmitSyncCommitteeMessage for mocking.
+func (fv *FakeValidator) SubmitSyncCommitteeMessage(_ context.Context, _ types.Slot, _ [48]byte) {}
+
 // LogAttestationsSubmitted for mocking.
 func (fv *FakeValidator) LogAttestationsSubmitted() {}
 
@@ -235,4 +238,9 @@ func (fv *FakeValidator) HandleKeyReload(_ context.Context, newKeys [][48]byte) 
 		}
 	}
 	return false, nil
+}
+
+// SubmitSignedContributionAndProof for mocking
+func (fv *FakeValidator) SubmitSignedContributionAndProof(ctx context.Context, slot types.Slot, pubKey [48]byte) {
+
 }

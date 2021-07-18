@@ -21,6 +21,7 @@ go_library(
         "//fuzz:__pkg__",
     ],
     deps = [
+        "//beacon-chain/core/altair:go_default_library",
         "//beacon-chain/core/helpers:go_default_library",
         "//beacon-chain/core/state:go_default_library",
         "//beacon-chain/db:go_default_library",
@@ -30,6 +31,7 @@ go_library(
         "//proto/interfaces:go_default_library",
         "//shared/bytesutil:go_default_library",
         "//shared/params:go_default_library",
+        "//shared/version:go_default_library",
         "@com_github_hashicorp_golang_lru//:go_default_library",
         "@com_github_pkg_errors//:go_default_library",
         "@com_github_prometheus_client_golang//prometheus:go_default_library",
@@ -69,6 +71,7 @@ go_test(
         "//shared/testutil:go_default_library",
         "//shared/testutil/assert:go_default_library",
         "//shared/testutil/require:go_default_library",
+        "//shared/version:go_default_library",
         "@com_github_prysmaticlabs_eth2_types//:go_default_library",
         "@com_github_sirupsen_logrus//hooks/test:go_default_library",
         "@org_golang_google_protobuf//proto:go_default_library",

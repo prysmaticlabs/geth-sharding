@@ -4,6 +4,7 @@ import (
 	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/prysmaticlabs/prysm/proto/beacon/p2p"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
+	"github.com/prysmaticlabs/prysm/shared/version"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -42,6 +43,29 @@ func (m MetadataV0) Copy() p2p.Metadata {
 	return WrappedMetadataV0(proto.Clone(m.md).(*pb.MetaDataV0))
 }
 
+// MarshalSSZ marshals the underlying metadata object
+// into its serialized form.
+func (m MetadataV0) MarshalSSZ() ([]byte, error) {
+	return m.md.MarshalSSZ()
+}
+
+// MarshalSSZTo marshals the underlying metadata object
+// into its serialized form into the provided byte buffer.
+func (m MetadataV0) MarshalSSZTo(dst []byte) ([]byte, error) {
+	return m.md.MarshalSSZTo(dst)
+}
+
+// SizeSSZ returns the serialized size of the metadata object.
+func (m MetadataV0) SizeSSZ() int {
+	return m.md.SizeSSZ()
+}
+
+// UnmarshalSSZ unmarshals the provided byte buffer into
+// the underlying metadata object.
+func (m MetadataV0) UnmarshalSSZ(buf []byte) error {
+	return m.md.UnmarshalSSZ(buf)
+}
+
 // MetadataObjV0 returns the inner metadata object in its type
 // specified form. If it doesn't exist then we return nothing.
 func (m MetadataV0) MetadataObjV0() *pb.MetaDataV0 {
@@ -52,6 +76,11 @@ func (m MetadataV0) MetadataObjV0() *pb.MetaDataV0 {
 // specified form. If it doesn't exist then we return nothing.
 func (m MetadataV0) MetadataObjV1() *pb.MetaDataV1 {
 	return nil
+}
+
+// Version returns the fork version of the underlying object.
+func (m MetadataV0) Version() int {
+	return version.Phase0
 }
 
 // MetadataV1 is a convenience wrapper around our metadata v2 protobuf object.
@@ -89,6 +118,29 @@ func (m MetadataV1) Copy() p2p.Metadata {
 	return WrappedMetadataV1(proto.Clone(m.md).(*pb.MetaDataV1))
 }
 
+// MarshalSSZ marshals the underlying metadata object
+// into its serialized form.
+func (m MetadataV1) MarshalSSZ() ([]byte, error) {
+	return m.md.MarshalSSZ()
+}
+
+// MarshalSSZTo marshals the underlying metadata object
+// into its serialized form into the provided byte buffer.
+func (m MetadataV1) MarshalSSZTo(dst []byte) ([]byte, error) {
+	return m.md.MarshalSSZTo(dst)
+}
+
+// SizeSSZ returns the serialized size of the metadata object.
+func (m MetadataV1) SizeSSZ() int {
+	return m.md.SizeSSZ()
+}
+
+// UnmarshalSSZ unmarshals the provided byte buffer into
+// the underlying metadata object.
+func (m MetadataV1) UnmarshalSSZ(buf []byte) error {
+	return m.md.UnmarshalSSZ(buf)
+}
+
 // MetadataObjV0 returns the inner metadata object in its type
 // specified form. If it doesn't exist then we return nothing.
 func (m MetadataV1) MetadataObjV0() *pb.MetaDataV0 {
@@ -99,4 +151,9 @@ func (m MetadataV1) MetadataObjV0() *pb.MetaDataV0 {
 // specified form. If it doesn't exist then we return nothing.
 func (m MetadataV1) MetadataObjV1() *pb.MetaDataV1 {
 	return m.md
+}
+
+// Version returns the fork version of the underlying object.
+func (m MetadataV1) Version() int {
+	return version.Altair
 }

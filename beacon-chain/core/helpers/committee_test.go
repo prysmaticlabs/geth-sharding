@@ -2,13 +2,15 @@ package helpers
 
 import (
 	"fmt"
-	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/go-bitfield"
-	"github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	"github.com/prysmaticlabs/prysm/beacon-chain/cache"
+	v1 "github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	v2 "github.com/prysmaticlabs/prysm/beacon-chain/state/v2"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
@@ -368,38 +370,6 @@ func TestVerifyAttestationBitfieldLengths_OK(t *testing.T) {
 	}
 }
 
-func TestShuffledIndices_ShuffleRightLength(t *testing.T) {
-	valiatorCount := 1000
-	validators := make([]*ethpb.Validator, valiatorCount)
-	indices := make([]uint64, valiatorCount)
-	for i := 0; i < valiatorCount; i++ {
-		validators[i] = &ethpb.Validator{
-			ExitEpoch: params.BeaconConfig().FarFutureEpoch,
-		}
-		indices[i] = uint64(i)
-	}
-	state, err := v1.InitializeFromProto(&pb.BeaconState{
-		Validators:  validators,
-		RandaoMixes: make([][]byte, params.BeaconConfig().EpochsPerHistoricalVector),
-	})
-	require.NoError(t, err)
-	// Test for current epoch
-	shuffledIndices, err := ShuffledIndices(state, 0)
-	require.NoError(t, err)
-	assert.Equal(t, valiatorCount, len(shuffledIndices), "Incorrect shuffled indices count")
-	if reflect.DeepEqual(indices, shuffledIndices) {
-		t.Error("Shuffling did not happen")
-	}
-
-	// Test for next epoch
-	shuffledIndices, err = ShuffledIndices(state, 1)
-	require.NoError(t, err)
-	assert.Equal(t, valiatorCount, len(shuffledIndices), "Incorrect shuffled indices count")
-	if reflect.DeepEqual(indices, shuffledIndices) {
-		t.Error("Shuffling did not happen")
-	}
-}
-
 func TestUpdateCommitteeCache_CanUpdate(t *testing.T) {
 	ClearCache()
 	validatorCount := params.BeaconConfig().MinGenesisActiveValidatorCount
@@ -407,7 +377,8 @@ func TestUpdateCommitteeCache_CanUpdate(t *testing.T) {
 	indices := make([]types.ValidatorIndex, validatorCount)
 	for i := types.ValidatorIndex(0); uint64(i) < validatorCount; i++ {
 		validators[i] = &ethpb.Validator{
-			ExitEpoch: params.BeaconConfig().FarFutureEpoch,
+			ExitEpoch:        params.BeaconConfig().FarFutureEpoch,
+			EffectiveBalance: 1,
 		}
 		indices[i] = i
 	}
@@ -426,6 +397,13 @@ func TestUpdateCommitteeCache_CanUpdate(t *testing.T) {
 	indices, err = committeeCache.Committee(params.BeaconConfig().SlotsPerEpoch.Mul(uint64(epoch)), seed, idx)
 	require.NoError(t, err)
 	assert.Equal(t, params.BeaconConfig().TargetCommitteeSize, uint64(len(indices)), "Did not save correct indices lengths")
+
+	// Total active balance should be `MinGenesisActiveValidatorCount` given each validator has effective balance of 1.
+	seed, err = Seed(state, 0, params.BeaconConfig().DomainBeaconAttester)
+	require.NoError(t, err)
+	balance, err := committeeCache.ActiveBalance(seed)
+	require.NoError(t, err)
+	require.Equal(t, validatorCount, balance)
 }
 
 func BenchmarkComputeCommittee300000_WithPreCache(b *testing.B) {
@@ -658,4 +636,374 @@ func TestPrecomputeProposerIndices_Ok(t *testing.T) {
 		wantedProposerIndices = append(wantedProposerIndices, index)
 	}
 	assert.DeepEqual(t, wantedProposerIndices, proposerIndices, "Did not precompute proposer indices correctly")
+}
+
+func TestIsCurrentEpochSyncCommittee_UsingCache(t *testing.T) {
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	ClearCache()
+	r := [32]byte{'a'}
+	require.NoError(t, err, syncCommitteeCache.UpdatePositionsInCommittee(r, state))
+
+	ok, err := IsCurrentEpochSyncCommittee(state, 0)
+	require.NoError(t, err)
+	require.Equal(t, true, ok)
+}
+
+func TestIsCurrentEpochSyncCommittee_UsingCommittee(t *testing.T) {
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	ok, err := IsCurrentEpochSyncCommittee(state, 0)
+	require.NoError(t, err)
+	require.Equal(t, true, ok)
+}
+
+func TestIsCurrentEpochSyncCommittee_DoesNotExist(t *testing.T) {
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	ok, err := IsCurrentEpochSyncCommittee(state, 12390192)
+	require.NoError(t, err)
+	require.Equal(t, false, ok)
+}
+
+func TestIsNextEpochSyncCommittee_UsingCache(t *testing.T) {
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	ClearCache()
+	r := [32]byte{'a'}
+	require.NoError(t, err, syncCommitteeCache.UpdatePositionsInCommittee(r, state))
+
+	ok, err := IsNextEpochSyncCommittee(state, 0)
+	require.NoError(t, err)
+	require.Equal(t, true, ok)
+}
+
+func TestIsNextEpochSyncCommittee_UsingCommittee(t *testing.T) {
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	ok, err := IsNextEpochSyncCommittee(state, 0)
+	require.NoError(t, err)
+	require.Equal(t, true, ok)
+}
+
+func TestIsNextEpochSyncCommittee_DoesNotExist(t *testing.T) {
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	ok, err := IsNextEpochSyncCommittee(state, 120391029)
+	require.NoError(t, err)
+	require.Equal(t, false, ok)
+}
+
+func TestCurrentEpochSyncSubcommitteeIndices_UsingCache(t *testing.T) {
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	ClearCache()
+	r := [32]byte{'a'}
+	require.NoError(t, err, syncCommitteeCache.UpdatePositionsInCommittee(r, state))
+
+	index, err := CurrentEpochSyncSubcommitteeIndices(state, 0)
+	require.NoError(t, err)
+	require.DeepEqual(t, []uint64{0}, index)
+}
+
+func TestCurrentEpochSyncSubcommitteeIndices_UsingCommittee(t *testing.T) {
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	root, err := syncPeriodBoundaryRoot(state)
+	require.NoError(t, err)
+
+	// Test that cache was empty.
+	_, err = syncCommitteeCache.CurrentEpochIndexPosition(bytesutil.ToBytes32(root), 0)
+	require.Equal(t, cache.ErrNonExistingSyncCommitteeKey, err)
+
+	// Test that helper can retrieve the index given empty cache.
+	index, err := CurrentEpochSyncSubcommitteeIndices(state, 0)
+	require.NoError(t, err)
+	require.DeepEqual(t, []uint64{0}, index)
+
+	// Test that cache was able to fill on miss.
+	time.Sleep(100 * time.Millisecond)
+	index, err = syncCommitteeCache.CurrentEpochIndexPosition(bytesutil.ToBytes32(root), 0)
+	require.NoError(t, err)
+	require.DeepEqual(t, []uint64{0}, index)
+}
+
+func TestCurrentEpochSyncSubcommitteeIndices_DoesNotExist(t *testing.T) {
+	ClearCache()
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	index, err := CurrentEpochSyncSubcommitteeIndices(state, 129301923)
+	require.NoError(t, err)
+	require.DeepEqual(t, []uint64(nil), index)
+}
+
+func TestNextEpochSyncSubcommitteeIndices_UsingCache(t *testing.T) {
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	ClearCache()
+	r := [32]byte{'a'}
+	require.NoError(t, err, syncCommitteeCache.UpdatePositionsInCommittee(r, state))
+
+	index, err := NextEpochSyncSubcommitteeIndices(state, 0)
+	require.NoError(t, err)
+	require.DeepEqual(t, []uint64{0}, index)
+}
+
+func TestNextEpochSyncSubcommitteeIndices_UsingCommittee(t *testing.T) {
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	index, err := NextEpochSyncSubcommitteeIndices(state, 0)
+	require.NoError(t, err)
+	require.DeepEqual(t, []uint64{0}, index)
+}
+
+func TestNextEpochSyncSubcommitteeIndices_DoesNotExist(t *testing.T) {
+	ClearCache()
+	validators := make([]*ethpb.Validator, params.BeaconConfig().SyncCommitteeSize)
+	syncCommittee := &pb.SyncCommittee{
+		AggregatePubkey: bytesutil.PadTo([]byte{}, params.BeaconConfig().BLSPubkeyLength),
+	}
+	for i := 0; i < len(validators); i++ {
+		k := make([]byte, 48)
+		copy(k, strconv.Itoa(i))
+		validators[i] = &ethpb.Validator{
+			PublicKey: k,
+		}
+		syncCommittee.Pubkeys = append(syncCommittee.Pubkeys, bytesutil.PadTo(k, 48))
+	}
+
+	state, err := v2.InitializeFromProto(&pb.BeaconStateAltair{
+		Validators: validators,
+	})
+	require.NoError(t, err)
+	require.NoError(t, state.SetCurrentSyncCommittee(syncCommittee))
+	require.NoError(t, state.SetNextSyncCommittee(syncCommittee))
+
+	index, err := NextEpochSyncSubcommitteeIndices(state, 21093019)
+	require.NoError(t, err)
+	require.DeepEqual(t, []uint64(nil), index)
+}
+
+func TestUpdateSyncCommitteeCache_BadSlot(t *testing.T) {
+	state, err := v1.InitializeFromProto(&pb.BeaconState{
+		Slot: 1,
+	})
+	require.NoError(t, err)
+	err = UpdateSyncCommitteeCache(state)
+	require.ErrorContains(t, "not at the end of the epoch to update cache", err)
+
+	state, err = v1.InitializeFromProto(&pb.BeaconState{
+		Slot: params.BeaconConfig().SlotsPerEpoch - 1,
+	})
+	require.NoError(t, err)
+	err = UpdateSyncCommitteeCache(state)
+	require.ErrorContains(t, "not at sync committee period boundary to update cache", err)
+}
+
+func TestUpdateSyncCommitteeCache_BadRoot(t *testing.T) {
+	state, err := v1.InitializeFromProto(&pb.BeaconState{
+		Slot:              types.Slot(params.BeaconConfig().EpochsPerSyncCommitteePeriod)*params.BeaconConfig().SlotsPerEpoch - 1,
+		LatestBlockHeader: &ethpb.BeaconBlockHeader{StateRoot: params.BeaconConfig().ZeroHash[:]},
+	})
+	require.NoError(t, err)
+	err = UpdateSyncCommitteeCache(state)
+	require.ErrorContains(t, "zero hash state root can't be used to update cache", err)
 }

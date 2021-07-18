@@ -7,6 +7,7 @@ import (
 	"time"
 
 	types "github.com/prysmaticlabs/eth2-types"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/altair"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/epoch/precompute"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/state"
@@ -17,6 +18,7 @@ import (
 	"github.com/prysmaticlabs/prysm/shared/cmd"
 	"github.com/prysmaticlabs/prysm/shared/pagination"
 	"github.com/prysmaticlabs/prysm/shared/params"
+	"github.com/prysmaticlabs/prysm/shared/version"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -518,14 +520,29 @@ func (bs *Server) GetValidatorParticipation(
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not get state: %v", err)
 	}
-
-	v, b, err := precompute.New(ctx, beaconState)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not set up pre compute instance: %v", err)
-	}
-	_, b, err = precompute.ProcessAttestations(ctx, beaconState, v, b)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Could not pre compute attestations: %v", err)
+	var v []*precompute.Validator
+	var b *precompute.Balance
+	switch beaconState.Version() {
+	case version.Phase0:
+		v, b, err = precompute.New(ctx, beaconState)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Could not set up pre compute instance: %v", err)
+		}
+		_, b, err = precompute.ProcessAttestations(ctx, beaconState, v, b)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Could not pre compute attestations: %v", err)
+		}
+	case version.Altair:
+		v, b, err = altair.InitializeEpochValidators(ctx, beaconState)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Could not set up altair pre compute instance: %v", err)
+		}
+		_, b, err = altair.ProcessEpochParticipation(ctx, beaconState, b, v)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Could not pre compute attestations: %v", err)
+		}
+	default:
+		return nil, status.Errorf(codes.Internal, "Invalid state type retrieved with a version of %d", beaconState.Version())
 	}
 
 	p := &ethpb.ValidatorParticipationResponse{
@@ -659,19 +676,41 @@ func (bs *Server) GetValidatorPerformance(
 			return nil, status.Errorf(codes.Internal, "Could not process slots: %v", err)
 		}
 	}
-	vp, bp, err := precompute.New(ctx, headState)
-	if err != nil {
-		return nil, err
+	validatorSummary := []*precompute.Validator{}
+	switch headState.Version() {
+	case version.Phase0:
+		vp, bp, err := precompute.New(ctx, headState)
+		if err != nil {
+			return nil, err
+		}
+		vp, bp, err = precompute.ProcessAttestations(ctx, headState, vp, bp)
+		if err != nil {
+			return nil, err
+		}
+		headState, err = precompute.ProcessRewardsAndPenaltiesPrecompute(headState, bp, vp, precompute.AttestationsDelta, precompute.ProposersDelta)
+		if err != nil {
+			return nil, err
+		}
+		validatorSummary = vp
+	case version.Altair:
+		vp, bp, err := altair.InitializeEpochValidators(ctx, headState)
+		if err != nil {
+			return nil, err
+		}
+		vp, bp, err = altair.ProcessEpochParticipation(ctx, headState, bp, vp)
+		if err != nil {
+			return nil, err
+		}
+		headState, vp, err = altair.ProcessInactivityScores(ctx, headState, vp)
+		if err != nil {
+			return nil, err
+		}
+		headState, err = altair.ProcessRewardsAndPenaltiesPrecompute(headState, bp, vp)
+		if err != nil {
+			return nil, err
+		}
+		validatorSummary = vp
 	}
-	vp, bp, err = precompute.ProcessAttestations(ctx, headState, vp, bp)
-	if err != nil {
-		return nil, err
-	}
-	headState, err = precompute.ProcessRewardsAndPenaltiesPrecompute(headState, bp, vp, precompute.AttestationsDelta, precompute.ProposersDelta)
-	if err != nil {
-		return nil, err
-	}
-	validatorSummary := vp
 
 	responseCap := len(req.Indices) + len(req.PublicKeys)
 	validatorIndices := make([]types.ValidatorIndex, 0, responseCap)

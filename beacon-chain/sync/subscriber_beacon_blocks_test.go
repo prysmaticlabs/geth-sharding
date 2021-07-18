@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/prysmaticlabs/go-bitfield"
@@ -10,6 +11,10 @@ import (
 	dbtest "github.com/prysmaticlabs/prysm/beacon-chain/db/testing"
 	"github.com/prysmaticlabs/prysm/beacon-chain/operations/attestations"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	"github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
+	"github.com/prysmaticlabs/prysm/proto/interfaces"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
+	wrapperv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2/wrapper"
 	"github.com/prysmaticlabs/prysm/shared/testutil"
 	"github.com/prysmaticlabs/prysm/shared/testutil/assert"
 	"github.com/prysmaticlabs/prysm/shared/testutil/require"
@@ -104,6 +109,52 @@ func TestService_beaconBlockSubscriber(t *testing.T) {
 			}
 			if tt.check != nil {
 				tt.check(t, s)
+			}
+		})
+	}
+}
+
+func TestBlockFromProto(t *testing.T) {
+	tests := []struct {
+		name       string
+		msgCreator func(t *testing.T) proto.Message
+		want       interfaces.SignedBeaconBlock
+		wantErr    bool
+	}{
+		{
+			name: "invalid type provided",
+			msgCreator: func(t *testing.T) proto.Message {
+				return &ethpb.SignedAggregateAttestationAndProof{}
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "phase 0 type provided",
+			msgCreator: func(t *testing.T) proto.Message {
+				return &ethpb.SignedBeaconBlock{Block: &ethpb.BeaconBlock{Slot: 100}}
+			},
+			want:    wrapper.WrappedPhase0SignedBeaconBlock(&ethpb.SignedBeaconBlock{Block: &ethpb.BeaconBlock{Slot: 100}}),
+			wantErr: false,
+		},
+		{
+			name: "altair type provided",
+			msgCreator: func(t *testing.T) proto.Message {
+				return &prysmv2.SignedBeaconBlock{Block: &prysmv2.BeaconBlock{Slot: 100}}
+			},
+			want:    wrapperv2.WrappedAltairSignedBeaconBlock(&prysmv2.SignedBeaconBlock{Block: &prysmv2.BeaconBlock{Slot: 100}}),
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := blockFromProto(tt.msgCreator(t))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("blockFromProto() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("blockFromProto() got = %v, want %v", got, tt.want)
 			}
 		})
 	}

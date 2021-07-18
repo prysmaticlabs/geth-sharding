@@ -7,6 +7,7 @@ import (
 
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/epoch"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/epoch/precompute"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
 	"github.com/prysmaticlabs/prysm/shared/testutil/require"
 	"github.com/prysmaticlabs/prysm/spectest/utils"
@@ -18,6 +19,7 @@ func RunSlashingsTests(t *testing.T, config string) {
 
 	testFolders, testsFolderPath := utils.TestFolders(t, config, "phase0", "epoch_processing/slashings/pyspec_tests")
 	for _, folder := range testFolders {
+		helpers.ClearCache()
 		t.Run(folder.Name(), func(t *testing.T) {
 			folderPath := path.Join(testsFolderPath, folder.Name())
 			RunEpochOperationTest(t, folderPath, processSlashingsWrapper)

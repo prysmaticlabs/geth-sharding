@@ -12,6 +12,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/prysmaticlabs/prysm/proto/beacon/p2p"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/encoder"
@@ -136,6 +137,11 @@ func (p *FakeP2P) Broadcast(_ context.Context, _ proto.Message) error {
 
 // BroadcastAttestation -- fake.
 func (p *FakeP2P) BroadcastAttestation(_ context.Context, _ uint64, _ *ethpb.Attestation) error {
+	return nil
+}
+
+// BroadcastSyncCommitteeMessage -- fake.
+func (b *FakeP2P) BroadcastSyncCommitteeMessage(_ context.Context, _ uint64, _ *prysmv2.SyncCommitteeMessage) error {
 	return nil
 }
 

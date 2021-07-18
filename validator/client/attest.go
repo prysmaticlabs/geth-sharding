@@ -12,6 +12,7 @@ import (
 	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	"github.com/prysmaticlabs/prysm/proto/interfaces"
 	validatorpb "github.com/prysmaticlabs/prysm/proto/validator/accounts/v2"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/featureconfig"
@@ -266,7 +267,7 @@ func (v *validator) waitOneThirdOrValidBlock(ctx context.Context, slot types.Slo
 	t := time.NewTimer(wait)
 	defer t.Stop()
 
-	bChannel := make(chan *ethpb.SignedBeaconBlock, 1)
+	bChannel := make(chan interfaces.SignedBeaconBlock, 1)
 	sub := v.blockFeed.Subscribe(bChannel)
 	defer sub.Unsubscribe()
 
@@ -274,7 +275,7 @@ func (v *validator) waitOneThirdOrValidBlock(ctx context.Context, slot types.Slo
 		select {
 		case b := <-bChannel:
 			if featureconfig.Get().AttestTimely {
-				if slot <= b.Block.Slot {
+				if slot <= b.Block().Slot() {
 					return
 				}
 			}

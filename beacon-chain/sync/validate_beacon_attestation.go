@@ -43,19 +43,12 @@ func (s *Service) validateCommitteeIndexBeaconAttestation(ctx context.Context, p
 		return pubsub.ValidationReject
 	}
 
-	// Override topic for decoding.
-	originalTopic := msg.Topic
-	format := p2p.GossipTypeMapping[reflect.TypeOf(&eth.Attestation{})]
-	msg.Topic = &format
-
 	m, err := s.decodePubsubMessage(msg)
 	if err != nil {
 		log.WithError(err).Debug("Could not decode message")
 		traceutil.AnnotateError(span, err)
 		return pubsub.ValidationReject
 	}
-	// Restore topic.
-	msg.Topic = originalTopic
 
 	att, ok := m.(*eth.Attestation)
 	if !ok {
@@ -98,7 +91,7 @@ func (s *Service) validateCommitteeIndexBeaconAttestation(ctx context.Context, p
 		return pubsub.ValidationReject
 	}
 
-	// Verify the block being voted and the processed state is in DB and. The block should have passed validation if it's in the DB.
+	// Verify the block being voted and the processed state is in DB and the block has passed validation if it's in the DB.
 	blockRoot := bytesutil.ToBytes32(att.Data.BeaconBlockRoot)
 	if !s.hasBlockAndState(ctx, blockRoot) {
 		// A node doesn't have the block, it'll request from peer while saving the pending attestation to a queue.
@@ -122,7 +115,7 @@ func (s *Service) validateCommitteeIndexBeaconAttestation(ctx context.Context, p
 		return pubsub.ValidationIgnore
 	}
 
-	validationRes := s.validateUnaggregatedAttTopic(ctx, att, preState, *originalTopic)
+	validationRes := s.validateUnaggregatedAttTopic(ctx, att, preState, *msg.Topic)
 	if validationRes != pubsub.ValidationAccept {
 		return validationRes
 	}
@@ -156,7 +149,7 @@ func (s *Service) validateUnaggregatedAttTopic(ctx context.Context, a *eth.Attes
 	}
 	subnet := helpers.ComputeSubnetForAttestation(valCount, a)
 	format := p2p.GossipTypeMapping[reflect.TypeOf(&eth.Attestation{})]
-	digest, err := s.forkDigest()
+	digest, err := s.currentForkDigest()
 	if err != nil {
 		log.WithError(err).Error("Could not compute fork digest")
 		traceutil.AnnotateError(span, err)

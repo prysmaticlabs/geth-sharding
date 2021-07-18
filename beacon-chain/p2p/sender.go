@@ -3,9 +3,11 @@ package p2p
 import (
 	"context"
 
+	ssz "github.com/ferranbt/fastssz"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
+	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/prysm/shared/traceutil"
 	"go.opencensus.io/trace"
 )
@@ -33,8 +35,12 @@ func (s *Service) Send(ctx context.Context, message interface{}, baseTopic strin
 		return nil, err
 	}
 	// do not encode anything if we are sending a metadata request
-	if baseTopic != RPCMetaDataTopicV1 {
-		if _, err := s.Encoding().EncodeWithMaxLength(stream, message); err != nil {
+	if baseTopic != RPCMetaDataTopicV1 && baseTopic != RPCMetaDataTopicV2 {
+		castedMsg, ok := message.(ssz.Marshaler)
+		if !ok {
+			return nil, errors.Errorf("%T does not support the ssz marshaller interface", message)
+		}
+		if _, err := s.Encoding().EncodeWithMaxLength(stream, castedMsg); err != nil {
 			traceutil.AnnotateError(span, err)
 			_err := stream.Reset()
 			_ = _err

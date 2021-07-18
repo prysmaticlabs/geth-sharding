@@ -98,6 +98,11 @@ func (f *Feed) typecheck(typ reflect.Type) bool {
 		f.etype = typ
 		return true
 	}
+	// In the event the feed's type is an actual interface, we
+	// perform an interface conformance check here.
+	if f.etype.Kind() == reflect.Interface && typ.Implements(f.etype) {
+		return true
+	}
 	return f.etype == typ
 }
 

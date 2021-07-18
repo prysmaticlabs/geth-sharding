@@ -1,6 +1,7 @@
 package params
 
 import (
+	"math"
 	"time"
 
 	types "github.com/prysmaticlabs/eth2-types"
@@ -17,6 +18,13 @@ func UseMainnetConfig() {
 	beaconConfig = MainnetConfig()
 }
 
+const (
+	// Genesis Fork Epoch for the mainnet config.
+	genesisForkEpoch = 0
+	// Altair Fork Epoch for mainnet config.
+	altairForkEpoch = math.MaxUint64
+)
+
 var mainnetNetworkConfig = &NetworkConfig{
 	GossipMaxSize:                   1 << 20, // 1 MiB
 	MaxChunkSize:                    1 << 20, // 1 MiB
@@ -30,6 +38,7 @@ var mainnetNetworkConfig = &NetworkConfig{
 	MessageDomainValidSnappy:        [4]byte{01, 00, 00, 00},
 	ETH2Key:                         "eth2",
 	AttSubnetKey:                    "attnets",
+	SyncCommsSubnetKey:              "syncnets",
 	MinimumPeersInSubnet:            4,
 	MinimumPeersInSubnetSearch:      20,
 	ContractDeploymentBlock:         11184524, // Note: contract was deployed in block 11052984 but no transactions were sent until 11184524.
@@ -137,30 +146,34 @@ var mainnetBeaconConfig = &BeaconChainConfig{
 	MaxVoluntaryExits:    16,
 
 	// BLS domain values.
-	DomainBeaconProposer:    bytesutil.ToBytes4(bytesutil.Bytes4(0)),
-	DomainBeaconAttester:    bytesutil.ToBytes4(bytesutil.Bytes4(1)),
-	DomainRandao:            bytesutil.ToBytes4(bytesutil.Bytes4(2)),
-	DomainDeposit:           bytesutil.ToBytes4(bytesutil.Bytes4(3)),
-	DomainVoluntaryExit:     bytesutil.ToBytes4(bytesutil.Bytes4(4)),
-	DomainSelectionProof:    bytesutil.ToBytes4(bytesutil.Bytes4(5)),
-	DomainAggregateAndProof: bytesutil.ToBytes4(bytesutil.Bytes4(6)),
+	DomainBeaconProposer:              bytesutil.ToBytes4(bytesutil.Bytes4(0)),
+	DomainBeaconAttester:              bytesutil.ToBytes4(bytesutil.Bytes4(1)),
+	DomainRandao:                      bytesutil.ToBytes4(bytesutil.Bytes4(2)),
+	DomainDeposit:                     bytesutil.ToBytes4(bytesutil.Bytes4(3)),
+	DomainVoluntaryExit:               bytesutil.ToBytes4(bytesutil.Bytes4(4)),
+	DomainSelectionProof:              bytesutil.ToBytes4(bytesutil.Bytes4(5)),
+	DomainAggregateAndProof:           bytesutil.ToBytes4(bytesutil.Bytes4(6)),
+	DomainSyncCommittee:               bytesutil.ToBytes4(bytesutil.Bytes4(7)),
+	DomainSyncCommitteeSelectionProof: bytesutil.ToBytes4(bytesutil.Bytes4(8)),
+	DomainContributionAndProof:        bytesutil.ToBytes4(bytesutil.Bytes4(9)),
 
 	// Prysm constants.
-	GweiPerEth:                1000000000,
-	BLSSecretKeyLength:        32,
-	BLSPubkeyLength:           48,
-	BLSSignatureLength:        96,
-	DefaultBufferSize:         10000,
-	WithdrawalPrivkeyFileName: "/shardwithdrawalkey",
-	ValidatorPrivkeyFileName:  "/validatorprivatekey",
-	RPCSyncCheck:              1,
-	EmptySignature:            [96]byte{},
-	DefaultPageSize:           250,
-	MaxPeersToSync:            15,
-	SlotsPerArchivedPoint:     2048,
-	GenesisCountdownInterval:  time.Minute,
-	ConfigName:                ConfigNames[Mainnet],
-	BeaconStateFieldCount:     21,
+	GweiPerEth:                  1000000000,
+	BLSSecretKeyLength:          32,
+	BLSPubkeyLength:             48,
+	BLSSignatureLength:          96,
+	DefaultBufferSize:           10000,
+	WithdrawalPrivkeyFileName:   "/shardwithdrawalkey",
+	ValidatorPrivkeyFileName:    "/validatorprivatekey",
+	RPCSyncCheck:                1,
+	EmptySignature:              [96]byte{},
+	DefaultPageSize:             250,
+	MaxPeersToSync:              15,
+	SlotsPerArchivedPoint:       2048,
+	GenesisCountdownInterval:    time.Minute,
+	ConfigName:                  ConfigNames[Mainnet],
+	BeaconStateFieldCount:       21,
+	BeaconStateAltairFieldCount: 24,
 
 	// Slasher related values.
 	WeakSubjectivityPeriod:          54000,
@@ -171,10 +184,41 @@ var mainnetBeaconConfig = &BeaconChainConfig{
 	SafetyDecay: 10,
 
 	// Fork related values.
-	GenesisForkVersion:  []byte{0, 0, 0, 0},
-	NextForkVersion:     []byte{0, 0, 0, 0}, // Set to GenesisForkVersion unless there is a scheduled fork
-	NextForkEpoch:       1<<64 - 1,          // Set to FarFutureEpoch unless there is a scheduled fork.
-	ForkVersionSchedule: map[types.Epoch][]byte{
+	GenesisForkVersion: []byte{0, 0, 0, 0},
+	AltairForkVersion:  []byte{1, 0, 0, 0},
+	AltairForkEpoch:    altairForkEpoch, // Set to Max Uint64 for now.
+	ForkVersionSchedule: map[[4]byte]types.Epoch{
+		{0, 0, 0, 0}: genesisForkEpoch,
+		{1, 0, 0, 0}: altairForkEpoch,
 		// Any further forks must be specified here by their epoch number.
 	},
+
+	// New values introduced in Altair hard fork 1.
+	// Participation flag indices.
+	TimelySourceFlagIndex: 0,
+	TimelyTargetFlagIndex: 1,
+	TimelyHeadFlagIndex:   2,
+
+	// Incentivization weight values.
+	TimelySourceWeight: 14,
+	TimelyTargetWeight: 26,
+	TimelyHeadWeight:   14,
+	SyncRewardWeight:   2,
+	ProposerWeight:     8,
+	WeightDenominator:  64,
+
+	// Validator related values.
+	TargetAggregatorsPerSyncSubcommittee: 4,
+	SyncCommitteeSubnetCount:             4,
+
+	// Misc values.
+	SyncCommitteeSize:            512,
+	InactivityScoreBias:          4,
+	InactivityScoreRecoveryRate:  16,
+	EpochsPerSyncCommitteePeriod: 256,
+
+	// Updated penalty values.
+	InactivityPenaltyQuotientAltair:      3 * 1 << 24, //50331648
+	MinSlashingPenaltyQuotientAltair:     64,
+	ProportionalSlashingMultiplierAltair: 2,
 }

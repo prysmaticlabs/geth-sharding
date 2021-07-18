@@ -24,6 +24,10 @@ const (
 	RoleProposer
 	// RoleAggregator means that the validator should submit an aggregation and proof.
 	RoleAggregator
+	// RoleSyncCommittee means that the validator should submit a sync committee message.
+	RoleSyncCommittee
+	// RoleSyncCommitteeAggregator means the valiator should aggregate sync committee messages and submit a sync committee contribution.
+	RoleSyncCommitteeAggregator
 )
 
 // Validator interface defines the primary methods of a validator client.
@@ -42,6 +46,8 @@ type Validator interface {
 	SubmitAttestation(ctx context.Context, slot types.Slot, pubKey [48]byte)
 	ProposeBlock(ctx context.Context, slot types.Slot, pubKey [48]byte)
 	SubmitAggregateAndProof(ctx context.Context, slot types.Slot, pubKey [48]byte)
+	SubmitSyncCommitteeMessage(ctx context.Context, slot types.Slot, pubKey [48]byte)
+	SubmitSignedContributionAndProof(ctx context.Context, slot types.Slot, pubKey [48]byte)
 	LogAttestationsSubmitted()
 	LogNextDutyTimeLeft(slot types.Slot) error
 	UpdateDomainDataCaches(ctx context.Context, slot types.Slot)

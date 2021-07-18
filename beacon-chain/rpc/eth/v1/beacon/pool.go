@@ -29,7 +29,7 @@ type singleAttestationVerificationFailure struct {
 // ListPoolAttestations retrieves attestations known by the node but
 // not necessarily incorporated into any block. Allows filtering by committee index or slot.
 func (bs *Server) ListPoolAttestations(ctx context.Context, req *ethpb.AttestationsPoolRequest) (*ethpb.AttestationsPoolResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.ListPoolAttestations")
+	ctx, span := trace.StartSpan(ctx, "beacon.ListPoolAttestations")
 	defer span.End()
 
 	attestations := bs.AttestationsPool.AggregatedAttestations()
@@ -65,7 +65,7 @@ func (bs *Server) ListPoolAttestations(ctx context.Context, req *ethpb.Attestati
 // SubmitAttestations submits Attestation object to node. If attestation passes all validation
 // constraints, node MUST publish attestation on appropriate subnet.
 func (bs *Server) SubmitAttestations(ctx context.Context, req *ethpb.SubmitAttestationsRequest) (*emptypb.Empty, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.SubmitAttestation")
+	ctx, span := trace.StartSpan(ctx, "beacon.SubmitAttestation")
 	defer span.End()
 
 	headState, err := bs.ChainInfoFetcher.HeadState(ctx)
@@ -127,7 +127,7 @@ func (bs *Server) SubmitAttestations(ctx context.Context, req *ethpb.SubmitAttes
 // ListPoolAttesterSlashings retrieves attester slashings known by the node but
 // not necessarily incorporated into any block.
 func (bs *Server) ListPoolAttesterSlashings(ctx context.Context, req *emptypb.Empty) (*ethpb.AttesterSlashingsPoolResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.ListPoolAttesterSlashings")
+	ctx, span := trace.StartSpan(ctx, "beacon.ListPoolAttesterSlashings")
 	defer span.End()
 
 	headState, err := bs.ChainInfoFetcher.HeadState(ctx)
@@ -149,7 +149,7 @@ func (bs *Server) ListPoolAttesterSlashings(ctx context.Context, req *emptypb.Em
 // SubmitAttesterSlashing submits AttesterSlashing object to node's pool and
 // if passes validation node MUST broadcast it to network.
 func (bs *Server) SubmitAttesterSlashing(ctx context.Context, req *ethpb.AttesterSlashing) (*emptypb.Empty, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.SubmitAttesterSlashing")
+	ctx, span := trace.StartSpan(ctx, "beacon.SubmitAttesterSlashing")
 	defer span.End()
 
 	headState, err := bs.ChainInfoFetcher.HeadState(ctx)
@@ -179,7 +179,7 @@ func (bs *Server) SubmitAttesterSlashing(ctx context.Context, req *ethpb.Atteste
 // ListPoolProposerSlashings retrieves proposer slashings known by the node
 // but not necessarily incorporated into any block.
 func (bs *Server) ListPoolProposerSlashings(ctx context.Context, req *emptypb.Empty) (*ethpb.ProposerSlashingPoolResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.ListPoolProposerSlashings")
+	ctx, span := trace.StartSpan(ctx, "beacon.ListPoolProposerSlashings")
 	defer span.End()
 
 	headState, err := bs.ChainInfoFetcher.HeadState(ctx)
@@ -201,7 +201,7 @@ func (bs *Server) ListPoolProposerSlashings(ctx context.Context, req *emptypb.Em
 // SubmitProposerSlashing submits AttesterSlashing object to node's pool and if
 // passes validation node MUST broadcast it to network.
 func (bs *Server) SubmitProposerSlashing(ctx context.Context, req *ethpb.ProposerSlashing) (*emptypb.Empty, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.SubmitProposerSlashing")
+	ctx, span := trace.StartSpan(ctx, "beacon.SubmitProposerSlashing")
 	defer span.End()
 
 	headState, err := bs.ChainInfoFetcher.HeadState(ctx)
@@ -231,7 +231,7 @@ func (bs *Server) SubmitProposerSlashing(ctx context.Context, req *ethpb.Propose
 // ListPoolVoluntaryExits retrieves voluntary exits known by the node but
 // not necessarily incorporated into any block.
 func (bs *Server) ListPoolVoluntaryExits(ctx context.Context, req *emptypb.Empty) (*ethpb.VoluntaryExitsPoolResponse, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.ListPoolVoluntaryExits")
+	ctx, span := trace.StartSpan(ctx, "beacon.ListPoolVoluntaryExits")
 	defer span.End()
 
 	headState, err := bs.ChainInfoFetcher.HeadState(ctx)
@@ -254,7 +254,7 @@ func (bs *Server) ListPoolVoluntaryExits(ctx context.Context, req *emptypb.Empty
 // SubmitVoluntaryExit submits SignedVoluntaryExit object to node's pool
 // and if passes validation node MUST broadcast it to network.
 func (bs *Server) SubmitVoluntaryExit(ctx context.Context, req *ethpb.SignedVoluntaryExit) (*emptypb.Empty, error) {
-	ctx, span := trace.StartSpan(ctx, "beaconv1.SubmitVoluntaryExit")
+	ctx, span := trace.StartSpan(ctx, "beacon.SubmitVoluntaryExit")
 	defer span.End()
 
 	headState, err := bs.ChainInfoFetcher.HeadState(ctx)

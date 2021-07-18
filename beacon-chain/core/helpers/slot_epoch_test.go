@@ -6,7 +6,7 @@ import (
 	"time"
 
 	types "github.com/prysmaticlabs/eth2-types"
-	"github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	v1 "github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/testutil/assert"
@@ -379,5 +379,22 @@ func TestPrevSlot(t *testing.T) {
 				t.Errorf("PrevSlot() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSyncCommitteePeriodStartEpoch(t *testing.T) {
+	tests := []struct {
+		epoch  types.Epoch
+		wanted types.Epoch
+	}{
+		{epoch: 0, wanted: 0},
+		{epoch: params.BeaconConfig().EpochsPerSyncCommitteePeriod + 1, wanted: params.BeaconConfig().EpochsPerSyncCommitteePeriod},
+		{epoch: params.BeaconConfig().EpochsPerSyncCommitteePeriod*2 + 100, wanted: params.BeaconConfig().EpochsPerSyncCommitteePeriod * 2},
+		{epoch: params.BeaconConfig().EpochsPerSyncCommitteePeriod*params.BeaconConfig().EpochsPerSyncCommitteePeriod + 1, wanted: params.BeaconConfig().EpochsPerSyncCommitteePeriod * params.BeaconConfig().EpochsPerSyncCommitteePeriod},
+	}
+	for _, test := range tests {
+		e, err := SyncCommitteePeriodStartEpoch(test.epoch)
+		require.NoError(t, err)
+		require.Equal(t, test.wanted, e)
 	}
 }

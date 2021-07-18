@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
@@ -12,9 +13,12 @@ import (
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
 	"github.com/prysmaticlabs/prysm/proto/interfaces"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
+	wrapperv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2/wrapper"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/sliceutil"
+	"github.com/prysmaticlabs/prysm/shared/version"
 	bolt "go.etcd.io/bbolt"
 	"go.opencensus.io/trace"
 )
@@ -30,24 +34,25 @@ func (s *Store) Block(ctx context.Context, blockRoot [32]byte) (interfaces.Signe
 	if v, ok := s.blockCache.Get(string(blockRoot[:])); v != nil && ok {
 		return v.(interfaces.SignedBeaconBlock), nil
 	}
-	var block *ethpb.SignedBeaconBlock
+	var block interfaces.SignedBeaconBlock
 	err := s.db.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(blocksBucket)
 		enc := bkt.Get(blockRoot[:])
 		if enc == nil {
 			return nil
 		}
-		block = &ethpb.SignedBeaconBlock{}
-		return decode(ctx, enc, block)
+		var err error
+		block, err = unmarshalBlock(ctx, enc)
+		return err
 	})
-	return wrapper.WrappedPhase0SignedBeaconBlock(block), err
+	return block, err
 }
 
 // HeadBlock returns the latest canonical block in the Ethereum Beacon Chain.
 func (s *Store) HeadBlock(ctx context.Context) (interfaces.SignedBeaconBlock, error) {
 	ctx, span := trace.StartSpan(ctx, "BeaconDB.HeadBlock")
 	defer span.End()
-	var headBlock *ethpb.SignedBeaconBlock
+	var headBlock interfaces.SignedBeaconBlock
 	err := s.db.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(blocksBucket)
 		headRoot := bkt.Get(headBlockRootKey)
@@ -58,10 +63,11 @@ func (s *Store) HeadBlock(ctx context.Context) (interfaces.SignedBeaconBlock, er
 		if enc == nil {
 			return nil
 		}
-		headBlock = &ethpb.SignedBeaconBlock{}
-		return decode(ctx, enc, headBlock)
+		var err error
+		headBlock, err = unmarshalBlock(ctx, enc)
+		return err
 	})
-	return wrapper.WrappedPhase0SignedBeaconBlock(headBlock), err
+	return headBlock, err
 }
 
 // Blocks retrieves a list of beacon blocks and its respective roots by filter criteria.
@@ -81,11 +87,11 @@ func (s *Store) Blocks(ctx context.Context, f *filters.QueryFilter) ([]interface
 
 		for i := 0; i < len(keys); i++ {
 			encoded := bkt.Get(keys[i])
-			block := &ethpb.SignedBeaconBlock{}
-			if err := decode(ctx, encoded, block); err != nil {
+			block, err := unmarshalBlock(ctx, encoded)
+			if err != nil {
 				return err
 			}
-			blocks = append(blocks, wrapper.WrappedPhase0SignedBeaconBlock(block))
+			blocks = append(blocks, block)
 			blockRoots = append(blockRoots, bytesutil.ToBytes32(keys[i]))
 		}
 		return nil
@@ -153,11 +159,11 @@ func (s *Store) BlocksBySlot(ctx context.Context, slot types.Slot) (bool, []inte
 
 		for i := 0; i < len(keys); i++ {
 			encoded := bkt.Get(keys[i])
-			block := &ethpb.SignedBeaconBlock{}
-			if err := decode(ctx, encoded, block); err != nil {
+			block, err := unmarshalBlock(ctx, encoded)
+			if err != nil {
 				return err
 			}
-			blocks = append(blocks, wrapper.WrappedPhase0SignedBeaconBlock(block))
+			blocks = append(blocks, block)
 		}
 		return nil
 	})
@@ -196,11 +202,11 @@ func (s *Store) deleteBlock(ctx context.Context, blockRoot [32]byte) error {
 		if enc == nil {
 			return nil
 		}
-		block := &ethpb.SignedBeaconBlock{}
-		if err := decode(ctx, enc, block); err != nil {
+		block, err := unmarshalBlock(ctx, enc)
+		if err != nil {
 			return err
 		}
-		indicesByBucket := createBlockIndicesFromBlock(ctx, wrapper.WrappedPhase0BeaconBlock(block.Block))
+		indicesByBucket := createBlockIndicesFromBlock(ctx, block.Block())
 		if err := deleteValueForIndices(ctx, indicesByBucket, blockRoot[:], tx); err != nil {
 			return errors.Wrap(err, "could not delete root for DB indices")
 		}
@@ -221,11 +227,11 @@ func (s *Store) deleteBlocks(ctx context.Context, blockRoots [][32]byte) error {
 			if enc == nil {
 				return nil
 			}
-			block := &ethpb.SignedBeaconBlock{}
-			if err := decode(ctx, enc, block); err != nil {
+			block, err := unmarshalBlock(ctx, enc)
+			if err != nil {
 				return err
 			}
-			indicesByBucket := createBlockIndicesFromBlock(ctx, wrapper.WrappedPhase0BeaconBlock(block.Block))
+			indicesByBucket := createBlockIndicesFromBlock(ctx, block.Block())
 			if err := deleteValueForIndices(ctx, indicesByBucket, blockRoot[:], tx); err != nil {
 				return errors.Wrap(err, "could not delete root for DB indices")
 			}
@@ -269,7 +275,7 @@ func (s *Store) SaveBlocks(ctx context.Context, blocks []interfaces.SignedBeacon
 			if existingBlock := bkt.Get(blockRoot[:]); existingBlock != nil {
 				continue
 			}
-			enc, err := encode(ctx, block.Proto())
+			enc, err := marshalBlock(ctx, block)
 			if err != nil {
 				return err
 			}
@@ -307,7 +313,7 @@ func (s *Store) SaveHeadBlockRoot(ctx context.Context, blockRoot [32]byte) error
 func (s *Store) GenesisBlock(ctx context.Context) (interfaces.SignedBeaconBlock, error) {
 	ctx, span := trace.StartSpan(ctx, "BeaconDB.GenesisBlock")
 	defer span.End()
-	var block *ethpb.SignedBeaconBlock
+	var block interfaces.SignedBeaconBlock
 	err := s.db.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket(blocksBucket)
 		root := bkt.Get(genesisBlockRootKey)
@@ -315,10 +321,11 @@ func (s *Store) GenesisBlock(ctx context.Context) (interfaces.SignedBeaconBlock,
 		if enc == nil {
 			return nil
 		}
-		block = &ethpb.SignedBeaconBlock{}
-		return decode(ctx, enc, block)
+		var err error
+		block, err = unmarshalBlock(ctx, enc)
+		return err
 	})
-	return wrapper.WrappedPhase0SignedBeaconBlock(block), err
+	return block, err
 }
 
 // SaveGenesisBlockRoot to the db.
@@ -578,4 +585,47 @@ func createBlockIndicesFromFilters(ctx context.Context, f *filters.QueryFilter) 
 		}
 	}
 	return indicesByBucket, nil
+}
+
+// unmarshal block from marshaled proto beacon block bytes to versioned beacon block struct type.
+func unmarshalBlock(ctx context.Context, enc []byte) (interfaces.SignedBeaconBlock, error) {
+	var err error
+	enc, err = snappy.Decode(nil, enc)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case hasAltairKey(enc):
+		// Marshal block bytes to altair beacon block.
+		rawBlock := &prysmv2.SignedBeaconBlock{}
+		err := rawBlock.UnmarshalSSZ(enc[len(altairKey):])
+		if err != nil {
+			return nil, err
+		}
+		return wrapperv2.WrappedAltairSignedBeaconBlock(rawBlock), nil
+	default:
+		// Marshal block bytes to phase 0 beacon block.
+		rawBlock := &ethpb.SignedBeaconBlock{}
+		err = rawBlock.UnmarshalSSZ(enc)
+		if err != nil {
+			return nil, err
+		}
+		return wrapper.WrappedPhase0SignedBeaconBlock(rawBlock), nil
+	}
+}
+
+// marshal versioned beacon block from struct type down to bytes.
+func marshalBlock(ctx context.Context, blk interfaces.SignedBeaconBlock) ([]byte, error) {
+	obj, err := blk.MarshalSSZ()
+	if err != nil {
+		return nil, err
+	}
+	switch blk.Version() {
+	case version.Altair:
+		return snappy.Encode(nil, append(altairKey, obj...)), nil
+	case version.Phase0:
+		return snappy.Encode(nil, obj), nil
+	default:
+		return nil, errors.New("Unknown block version")
+	}
 }

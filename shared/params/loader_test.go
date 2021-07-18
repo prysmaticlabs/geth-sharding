@@ -76,8 +76,11 @@ func TestLoadConfigFileMainnet(t *testing.T) {
 		assert.Equal(t, c1.WhistleBlowerRewardQuotient, c2.WhistleBlowerRewardQuotient, "%s: WhistleBlowerRewardQuotient", name)
 		assert.Equal(t, c1.ProposerRewardQuotient, c2.ProposerRewardQuotient, "%s: ProposerRewardQuotient", name)
 		assert.Equal(t, c1.InactivityPenaltyQuotient, c2.InactivityPenaltyQuotient, "%s: InactivityPenaltyQuotient", name)
+		assert.Equal(t, c1.InactivityPenaltyQuotientAltair, c2.InactivityPenaltyQuotientAltair, "%s: InactivityPenaltyQuotientAltair", name)
 		assert.Equal(t, c1.MinSlashingPenaltyQuotient, c2.MinSlashingPenaltyQuotient, "%s: MinSlashingPenaltyQuotient", name)
+		assert.Equal(t, c1.MinSlashingPenaltyQuotientAltair, c2.MinSlashingPenaltyQuotientAltair, "%s: MinSlashingPenaltyQuotientAltair", name)
 		assert.Equal(t, c1.ProportionalSlashingMultiplier, c2.ProportionalSlashingMultiplier, "%s: ProportionalSlashingMultiplier", name)
+		assert.Equal(t, c1.ProportionalSlashingMultiplierAltair, c2.ProportionalSlashingMultiplierAltair, "%s: ProportionalSlashingMultiplierAltair", name)
 
 		// Max operations per block.
 		assert.Equal(t, c1.MaxProposerSlashings, c2.MaxProposerSlashings, "%s: MaxProposerSlashings", name)
@@ -97,14 +100,18 @@ func TestLoadConfigFileMainnet(t *testing.T) {
 	}
 
 	t.Run("mainnet", func(t *testing.T) {
-		mainnetConfigFile := ConfigFilePath(t, "mainnet")
+		mainnetConfigFile := configFilePath(t, "mainnet")
 		LoadChainConfigFile(mainnetConfigFile)
+		mainnetPresetFile := configFilePath(t, "mainnet")
+		LoadChainConfigFile(mainnetPresetFile)
 		assertVals("mainnet", MainnetConfig(), BeaconConfig())
 	})
 
 	t.Run("minimal", func(t *testing.T) {
-		minimalConfigFile := ConfigFilePath(t, "minimal")
+		minimalConfigFile := configFilePath(t, "minimal")
 		LoadChainConfigFile(minimalConfigFile)
+		minimalPresetFile := presetsFilePath(t, "minimal")
+		LoadChainConfigFile(minimalPresetFile)
 		assertVals("minimal", MinimalSpecConfig(), BeaconConfig())
 	})
 }
@@ -198,12 +205,20 @@ func Test_replaceHexStringWithYAMLFormat(t *testing.T) {
 	}
 }
 
-// ConfigFilePath sets the proper config and returns the relevant
+// configFilePath sets the proper config and returns the relevant
 // config file path from eth2-spec-tests directory.
-func ConfigFilePath(t *testing.T, config string) string {
-	configFolderPath := path.Join("tests", config)
-	filepath, err := bazel.Runfile(configFolderPath)
+func configFilePath(t *testing.T, config string) string {
+	filepath, err := bazel.Runfile("external/eth2_spec")
 	require.NoError(t, err)
-	configFilePath := path.Join(filepath, "config", "phase0.yaml")
+	configFilePath := path.Join(filepath, "configs", config+".yaml")
+	return configFilePath
+}
+
+// presetsFilePath sets the proper preset and returns the relevant
+// preset file path from eth2-spec-tests directory.
+func presetsFilePath(t *testing.T, config string) string {
+	filepath, err := bazel.Runfile("external/eth2_spec")
+	require.NoError(t, err)
+	configFilePath := path.Join(filepath, "presets", config, "phase0.yaml")
 	return configFilePath
 }

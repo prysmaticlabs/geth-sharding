@@ -15,7 +15,7 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	dbTest "github.com/prysmaticlabs/prysm/beacon-chain/db/testing"
 	"github.com/prysmaticlabs/prysm/beacon-chain/state/stategen"
-	"github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	v1 "github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
 	pbp2p "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
 	"github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
@@ -217,7 +217,7 @@ func TestServer_ListBlocks_Pagination(t *testing.T) {
 						Slot: 6}}),
 					BlockRoot: blkContainers[6].BlockRoot,
 					Canonical: blkContainers[6].Canonical}},
-				TotalSize: 1}},
+				TotalSize: 1, NextPageToken: strconv.Itoa(0)}},
 		{req: &ethpb.ListBlocksRequest{QueryFilter: &ethpb.ListBlocksRequest_Root{Root: root6[:]}},
 			res: &ethpb.ListBlocksResponse{
 				BlockContainers: []*ethpb.BeaconBlockContainer{{Block: testutil.HydrateSignedBeaconBlock(&ethpb.SignedBeaconBlock{
@@ -225,7 +225,7 @@ func TestServer_ListBlocks_Pagination(t *testing.T) {
 						Slot: 6}}),
 					BlockRoot: blkContainers[6].BlockRoot,
 					Canonical: blkContainers[6].Canonical}},
-				TotalSize: 1}},
+				TotalSize: 1, NextPageToken: strconv.Itoa(0)}},
 		{req: &ethpb.ListBlocksRequest{
 			PageToken:   strconv.Itoa(0),
 			QueryFilter: &ethpb.ListBlocksRequest_Epoch{Epoch: 0},

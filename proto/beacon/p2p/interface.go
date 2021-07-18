@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	ssz "github.com/ferranbt/fastssz"
 	"github.com/prysmaticlabs/go-bitfield"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 )
@@ -12,6 +13,9 @@ type Metadata interface {
 	InnerObject() interface{}
 	IsNil() bool
 	Copy() Metadata
+	ssz.Marshaler
+	ssz.Unmarshaler
 	MetadataObjV0() *pb.MetaDataV0
 	MetadataObjV1() *pb.MetaDataV1
+	Version() int
 }

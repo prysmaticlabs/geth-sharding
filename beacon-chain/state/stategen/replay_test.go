@@ -17,6 +17,7 @@ import (
 	"github.com/prysmaticlabs/prysm/shared/testutil"
 	"github.com/prysmaticlabs/prysm/shared/testutil/assert"
 	"github.com/prysmaticlabs/prysm/shared/testutil/require"
+	"github.com/prysmaticlabs/prysm/shared/version"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -108,6 +109,34 @@ func TestReplayBlocks_LowerSlotBlock(t *testing.T) {
 	newState, err := service.ReplayBlocks(context.Background(), beaconState, []interfaces.SignedBeaconBlock{wrapper.WrappedPhase0SignedBeaconBlock(b)}, targetSlot)
 	require.NoError(t, err)
 	assert.Equal(t, targetSlot, newState.Slot(), "Did not advance slots")
+}
+
+func TestReplayBlocks_ThroughForkBoundary(t *testing.T) {
+	params.SetupTestConfigCleanup(t)
+	bCfg := params.BeaconConfig()
+	bCfg.AltairForkEpoch = 1
+	bCfg.ForkVersionSchedule[bytesutil.ToBytes4(bCfg.AltairForkVersion)] = 1
+	params.OverrideBeaconConfig(bCfg)
+
+	beaconState, _ := testutil.DeterministicGenesisState(t, 32)
+	genesisBlock := blocks.NewGenesisBlock([]byte{})
+	bodyRoot, err := genesisBlock.Block.HashTreeRoot()
+	require.NoError(t, err)
+	err = beaconState.SetLatestBlockHeader(&ethpb.BeaconBlockHeader{
+		Slot:       genesisBlock.Block.Slot,
+		ParentRoot: genesisBlock.Block.ParentRoot,
+		StateRoot:  params.BeaconConfig().ZeroHash[:],
+		BodyRoot:   bodyRoot[:],
+	})
+	require.NoError(t, err)
+
+	service := New(testDB.SetupDB(t))
+	targetSlot := params.BeaconConfig().SlotsPerEpoch
+	newState, err := service.ReplayBlocks(context.Background(), beaconState, []interfaces.SignedBeaconBlock{}, targetSlot)
+	require.NoError(t, err)
+
+	// Verify state is version Altair.
+	assert.Equal(t, version.Altair, newState.Version())
 }
 
 func TestLoadBlocks_FirstBranch(t *testing.T) {

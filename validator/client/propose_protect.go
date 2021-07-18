@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	"github.com/prysmaticlabs/prysm/proto/interfaces"
 	"github.com/prysmaticlabs/prysm/shared/blockutil"
 	"github.com/prysmaticlabs/prysm/shared/featureconfig"
 	"github.com/prysmaticlabs/prysm/shared/params"
@@ -17,11 +17,11 @@ var failedPreBlockSignExternalErr = "attempted a double proposal, block rejected
 var failedPostBlockSignErr = "made a double proposal, considered slashable by remote slashing protection"
 
 func (v *validator) preBlockSignValidations(
-	ctx context.Context, pubKey [48]byte, block *ethpb.BeaconBlock, signingRoot [32]byte,
+	ctx context.Context, pubKey [48]byte, block interfaces.BeaconBlock, signingRoot [32]byte,
 ) error {
 	fmtKey := fmt.Sprintf("%#x", pubKey[:])
 
-	prevSigningRoot, proposalAtSlotExists, err := v.db.ProposalHistoryForSlot(ctx, pubKey, block.Slot)
+	prevSigningRoot, proposalAtSlotExists, err := v.db.ProposalHistoryForSlot(ctx, pubKey, block.Slot())
 	if err != nil {
 		if v.emitAccountMetrics {
 			ValidatorProposeFailVec.WithLabelValues(fmtKey).Inc()
@@ -50,16 +50,16 @@ func (v *validator) preBlockSignValidations(
 	// than or equal to the minimum signed proposal present in the DB for that public key.
 	// In the case the slot of the incoming block is equal to the minimum signed proposal, we
 	// then also check the signing root is different.
-	if lowestProposalExists && signingRootIsDifferent && lowestSignedProposalSlot >= block.Slot {
+	if lowestProposalExists && signingRootIsDifferent && lowestSignedProposalSlot >= block.Slot() {
 		return fmt.Errorf(
 			"could not sign block with slot <= lowest signed slot in db, lowest signed slot: %d >= block slot: %d",
 			lowestSignedProposalSlot,
-			block.Slot,
+			block.Slot(),
 		)
 	}
 
 	if featureconfig.Get().SlasherProtection && v.protector != nil {
-		blockHdr, err := blockutil.BeaconBlockHeaderFromBlock(block)
+		blockHdr, err := blockutil.BeaconBlockHeaderFromBlockInterface(block)
 		if err != nil {
 			return errors.Wrap(err, "failed to get block header from block")
 		}
@@ -77,12 +77,12 @@ func (v *validator) preBlockSignValidations(
 func (v *validator) postBlockSignUpdate(
 	ctx context.Context,
 	pubKey [48]byte,
-	block *ethpb.SignedBeaconBlock,
+	block interfaces.SignedBeaconBlock,
 	signingRoot [32]byte,
 ) error {
 	fmtKey := fmt.Sprintf("%#x", pubKey[:])
 	if featureconfig.Get().SlasherProtection && v.protector != nil {
-		sbh, err := blockutil.SignedBeaconBlockHeaderFromBlock(block)
+		sbh, err := blockutil.SignedBeaconBlockHeaderFromBlockInterface(block)
 		if err != nil {
 			return errors.Wrap(err, "failed to get block header from block")
 		}
@@ -97,7 +97,7 @@ func (v *validator) postBlockSignUpdate(
 			return fmt.Errorf(failedPostBlockSignErr)
 		}
 	}
-	if err := v.db.SaveProposalHistoryForSlot(ctx, pubKey, block.Block.Slot, signingRoot[:]); err != nil {
+	if err := v.db.SaveProposalHistoryForSlot(ctx, pubKey, block.Block().Slot(), signingRoot[:]); err != nil {
 		if v.emitAccountMetrics {
 			ValidatorProposeFailVec.WithLabelValues(fmtKey).Inc()
 		}
@@ -106,11 +106,11 @@ func (v *validator) postBlockSignUpdate(
 	return nil
 }
 
-func blockLogFields(pubKey [48]byte, blk *ethpb.BeaconBlock, sig []byte) logrus.Fields {
+func blockLogFields(pubKey [48]byte, blk interfaces.BeaconBlock, sig []byte) logrus.Fields {
 	fields := logrus.Fields{
 		"proposerPublicKey": fmt.Sprintf("%#x", pubKey),
-		"proposerIndex":     blk.ProposerIndex,
-		"blockSlot":         blk.Slot,
+		"proposerIndex":     blk.ProposerIndex(),
+		"blockSlot":         blk.Slot(),
 	}
 	if sig != nil {
 		fields["signature"] = fmt.Sprintf("%#x", sig)

@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/blockchain"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
 	p2ptypes "github.com/prysmaticlabs/prysm/beacon-chain/p2p/types"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
@@ -27,7 +28,11 @@ func SendBeaconBlocksByRangeRequest(
 	ctx context.Context, chain blockchain.ChainInfoFetcher, p2pProvider p2p.P2P, pid peer.ID,
 	req *pb.BeaconBlocksByRangeRequest, blockProcessor BeaconBlockProcessor,
 ) ([]interfaces.SignedBeaconBlock, error) {
-	stream, err := p2pProvider.Send(ctx, req, p2p.RPCBlocksByRangeTopicV1, pid)
+	topic, err := p2p.TopicFromMessage(p2p.BeaconBlocksByRangeMessageName, helpers.SlotToEpoch(chain.CurrentSlot()))
+	if err != nil {
+		return nil, err
+	}
+	stream, err := p2pProvider.Send(ctx, req, topic, pid)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +90,11 @@ func SendBeaconBlocksByRootRequest(
 	ctx context.Context, chain blockchain.ChainInfoFetcher, p2pProvider p2p.P2P, pid peer.ID,
 	req *p2ptypes.BeaconBlockByRootsReq, blockProcessor BeaconBlockProcessor,
 ) ([]interfaces.SignedBeaconBlock, error) {
-	stream, err := p2pProvider.Send(ctx, req, p2p.RPCBlocksByRootTopicV1, pid)
+	topic, err := p2p.TopicFromMessage(p2p.BeaconBlocksByRootsMessageName, helpers.SlotToEpoch(chain.CurrentSlot()))
+	if err != nil {
+		return nil, err
+	}
+	stream, err := p2pProvider.Send(ctx, req, topic, pid)
 	if err != nil {
 		return nil, err
 	}

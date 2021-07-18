@@ -2,10 +2,12 @@ package p2p
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/go-bitfield"
 	"github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1/wrapper"
 	"go.opencensus.io/trace"
@@ -15,8 +17,10 @@ import (
 )
 
 var attestationSubnetCount = params.BeaconNetworkConfig().AttestationSubnetCount
+var syncCommsSubnetCount = params.BeaconConfig().SyncCommitteeSubnetCount
 
 var attSubnetEnrKey = params.BeaconNetworkConfig().AttSubnetKey
+var syncCommsSubnetEnrKey = params.BeaconNetworkConfig().SyncCommsSubnetKey
 
 // FindPeersWithSubnet performs a network search for peers
 // subscribed to a particular subnet. Then we try to connect
@@ -36,7 +40,14 @@ func (s *Service) FindPeersWithSubnet(ctx context.Context, topic string,
 
 	topic += s.Encoding().ProtocolSuffix()
 	iterator := s.dv5Listener.RandomNodes()
-	iterator = filterNodes(ctx, iterator, s.filterPeerForSubnet(index))
+	switch {
+	case strings.Contains(topic, GossipAttestationMessage):
+		iterator = filterNodes(ctx, iterator, s.filterPeerForAttSubnet(index))
+	case strings.Contains(topic, GossipSyncCommitteeMessage):
+		iterator = filterNodes(ctx, iterator, s.filterPeerForSyncSubnet(index))
+	default:
+		return false, errors.New("no subnet exists for provided topic")
+	}
 
 	currNum := uint64(len(s.pubsub.ListPeers(topic)))
 	wg := new(sync.WaitGroup)
@@ -69,12 +80,33 @@ func (s *Service) FindPeersWithSubnet(ctx context.Context, topic string,
 }
 
 // returns a method with filters peers specifically for a particular attestation subnet.
-func (s *Service) filterPeerForSubnet(index uint64) func(node *enode.Node) bool {
+func (s *Service) filterPeerForAttSubnet(index uint64) func(node *enode.Node) bool {
 	return func(node *enode.Node) bool {
 		if !s.filterPeer(node) {
 			return false
 		}
 		subnets, err := attSubnets(node.Record())
+		if err != nil {
+			return false
+		}
+		indExists := false
+		for _, comIdx := range subnets {
+			if comIdx == index {
+				indExists = true
+				break
+			}
+		}
+		return indExists
+	}
+}
+
+// returns a method with filters peers specifically for a particular sync subnet.
+func (s *Service) filterPeerForSyncSubnet(index uint64) func(node *enode.Node) bool {
+	return func(node *enode.Node) bool {
+		if !s.filterPeer(node) {
+			return false
+		}
+		subnets, err := syncSubnets(node.Record())
 		if err != nil {
 			return false
 		}
@@ -109,11 +141,36 @@ func (s *Service) updateSubnetRecordWithMetadata(bitV bitfield.Bitvector64) {
 	})
 }
 
+// Updates the service's discv5 listener record's attestation subnet
+// with a new value for a bitfield of subnets tracked. It also record's
+// the sync committee subnet in the enr. It also updates the node's
+// metadata by increasing the sequence number and the subnets tracked by the node.
+func (s *Service) updateSubnetRecordWithMetadataV2(bitV bitfield.Bitvector64, bitS bitfield.Bitvector4) {
+	entry := enr.WithEntry(attSubnetEnrKey, &bitV)
+	subEntry := enr.WithEntry(syncCommsSubnetEnrKey, &bitS)
+	s.dv5Listener.LocalNode().Set(entry)
+	s.dv5Listener.LocalNode().Set(subEntry)
+	s.metaData = wrapper.WrappedMetadataV1(&pb.MetaDataV1{
+		SeqNumber: s.metaData.SequenceNumber() + 1,
+		Attnets:   bitV,
+		Syncnets:  bitS,
+	})
+}
+
 // Initializes a bitvector of attestation subnets beacon nodes is subscribed to
 // and creates a new ENR entry with its default value.
-func intializeAttSubnets(node *enode.LocalNode) *enode.LocalNode {
+func initializeAttSubnets(node *enode.LocalNode) *enode.LocalNode {
 	bitV := bitfield.NewBitvector64()
 	entry := enr.WithEntry(attSubnetEnrKey, bitV.Bytes())
+	node.Set(entry)
+	return node
+}
+
+// Initializes a bitvector of sync committees subnets beacon nodes is subscribed to
+// and creates a new ENR entry with its default value.
+func initializeSyncCommSubnets(node *enode.LocalNode) *enode.LocalNode {
+	bitV := bitfield.Bitvector4{byte(0x00)}
+	entry := enr.WithEntry(syncCommsSubnetEnrKey, bitV.Bytes())
 	node.Set(entry)
 	return node
 }
@@ -121,9 +178,12 @@ func intializeAttSubnets(node *enode.LocalNode) *enode.LocalNode {
 // Reads the attestation subnets entry from a node's ENR and determines
 // the committee indices of the attestation subnets the node is subscribed to.
 func attSubnets(record *enr.Record) ([]uint64, error) {
-	bitV, err := bitvector(record)
+	bitV, err := attBitvector(record)
 	if err != nil {
 		return nil, err
+	}
+	if len(bitV) != determineSize(int(attestationSubnetCount)) {
+		return []uint64{}, errors.Errorf("invalid bitvector provided, it has a size of %d", len(bitV))
 	}
 	var committeeIdxs []uint64
 	for i := uint64(0); i < attestationSubnetCount; i++ {
@@ -134,11 +194,42 @@ func attSubnets(record *enr.Record) ([]uint64, error) {
 	return committeeIdxs, nil
 }
 
+// Reads the sync subnets entry from a node's ENR and determines
+// the committee indices of the sync subnets the node is subscribed to.
+func syncSubnets(record *enr.Record) ([]uint64, error) {
+	bitV, err := syncBitvector(record)
+	if err != nil {
+		return nil, err
+	}
+	if len(bitV) != determineSize(int(syncCommsSubnetCount)) {
+		return []uint64{}, errors.Errorf("invalid bitvector provided, it has a size of %d", len(bitV))
+	}
+	var committeeIdxs []uint64
+	for i := uint64(0); i < syncCommsSubnetCount; i++ {
+		if bitV.BitAt(i) {
+			committeeIdxs = append(committeeIdxs, i)
+		}
+	}
+	return committeeIdxs, nil
+}
+
 // Parses the attestation subnets ENR entry in a node and extracts its value
 // as a bitvector for further manipulation.
-func bitvector(record *enr.Record) (bitfield.Bitvector64, error) {
+func attBitvector(record *enr.Record) (bitfield.Bitvector64, error) {
 	bitV := bitfield.NewBitvector64()
 	entry := enr.WithEntry(attSubnetEnrKey, &bitV)
+	err := record.Load(entry)
+	if err != nil {
+		return nil, err
+	}
+	return bitV, nil
+}
+
+// Parses the attestation subnets ENR entry in a node and extracts its value
+// as a bitvector for further manipulation.
+func syncBitvector(record *enr.Record) (bitfield.Bitvector4, error) {
+	bitV := bitfield.Bitvector4{byte(0x00)}
+	entry := enr.WithEntry(syncCommsSubnetEnrKey, &bitV)
 	err := record.Load(entry)
 	if err != nil {
 		return nil, err
@@ -155,4 +246,12 @@ func (s *Service) subnetLocker(i uint64) *sync.RWMutex {
 		s.subnetsLock[i] = l
 	}
 	return l
+}
+
+func determineSize(bitCount int) int {
+	numOfBytes := bitCount / 8
+	if bitCount%8 != 0 {
+		numOfBytes++
+	}
+	return numOfBytes
 }

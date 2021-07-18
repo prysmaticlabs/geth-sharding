@@ -1,4 +1,4 @@
-load("@prysm//tools/go:def.bzl", "go_library")
+load("@prysm//tools/go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
@@ -8,8 +8,22 @@ go_library(
     deps = [
         "//beacon-chain/core/helpers:go_default_library",
         "//proto/beacon/p2p/v1:go_default_library",
+        "//shared/bytesutil:go_default_library",
         "//shared/params:go_default_library",
         "@com_github_pkg_errors//:go_default_library",
+        "@com_github_prysmaticlabs_eth2_types//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["fork_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//beacon-chain/core/helpers:go_default_library",
+        "//proto/beacon/p2p/v1:go_default_library",
+        "//shared/params:go_default_library",
+        "//shared/testutil/assert:go_default_library",
         "@com_github_prysmaticlabs_eth2_types//:go_default_library",
     ],
 )

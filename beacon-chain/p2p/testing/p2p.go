@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/p2p/enr"
+	ssz "github.com/ferranbt/fastssz"
 	bhost "github.com/libp2p/go-libp2p-blankhost"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/control"
@@ -25,6 +26,7 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/peers/scorers"
 	"github.com/prysmaticlabs/prysm/proto/beacon/p2p"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
@@ -99,7 +101,11 @@ func (p *TestP2P) ReceiveRPC(topic string, msg proto.Message) {
 		}
 	}()
 
-	n, err := p.Encoding().EncodeWithMaxLength(s, msg)
+	castedMsg, ok := msg.(ssz.Marshaler)
+	if !ok {
+		p.t.Fatalf("%T doesnt support ssz marshaler", msg)
+	}
+	n, err := p.Encoding().EncodeWithMaxLength(s, castedMsg)
 	if err != nil {
 		_err := s.Reset()
 		_ = _err
@@ -127,8 +133,12 @@ func (p *TestP2P) ReceivePubSub(topic string, msg proto.Message) {
 	// pick up the newly connected peer.
 	time.Sleep(time.Millisecond * 100)
 
+	castedMsg, ok := msg.(ssz.Marshaler)
+	if !ok {
+		p.t.Fatalf("%T doesnt support ssz marshaler", msg)
+	}
 	buf := new(bytes.Buffer)
-	if _, err := p.Encoding().EncodeGossip(buf, msg); err != nil {
+	if _, err := p.Encoding().EncodeGossip(buf, castedMsg); err != nil {
 		p.t.Fatalf("Failed to encode message: %v", err)
 	}
 	digest, err := p.ForkDigest()
@@ -152,6 +162,12 @@ func (p *TestP2P) Broadcast(_ context.Context, _ proto.Message) error {
 
 // BroadcastAttestation broadcasts an attestation.
 func (p *TestP2P) BroadcastAttestation(_ context.Context, _ uint64, _ *ethpb.Attestation) error {
+	p.BroadcastCalled = true
+	return nil
+}
+
+// BroadcastSyncCommitteeMessage broadcasts a sync committee message.
+func (p *TestP2P) BroadcastSyncCommitteeMessage(_ context.Context, _ uint64, _ *prysmv2.SyncCommitteeMessage) error {
 	p.BroadcastCalled = true
 	return nil
 }
@@ -292,8 +308,12 @@ func (p *TestP2P) Send(ctx context.Context, msg interface{}, topic string, pid p
 		return nil, err
 	}
 
-	if topic != "/eth2/beacon_chain/req/metadata/1" {
-		if _, err := p.Encoding().EncodeWithMaxLength(stream, msg); err != nil {
+	if topic != "/eth2/beacon_chain/req/metadata/1" && topic != "/eth2/beacon_chain/req/metadata/2" {
+		castedMsg, ok := msg.(ssz.Marshaler)
+		if !ok {
+			p.t.Fatalf("%T doesnt support ssz marshaler", msg)
+		}
+		if _, err := p.Encoding().EncodeWithMaxLength(stream, castedMsg); err != nil {
 			_err := stream.Reset()
 			_ = _err
 			return nil, err

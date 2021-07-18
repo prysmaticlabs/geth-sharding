@@ -26,6 +26,7 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/encoder"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/peers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/peers/scorers"
+	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/types"
 	"github.com/prysmaticlabs/prysm/proto/beacon/p2p"
 	"github.com/prysmaticlabs/prysm/shared"
 	"github.com/prysmaticlabs/prysm/shared/params"
@@ -56,7 +57,6 @@ var maxDialTimeout = params.BeaconNetworkConfig().RespTimeout
 type Service struct {
 	started               bool
 	isPreGenesis          bool
-	currentForkDigest     [4]byte
 	pingMethod            func(ctx context.Context, id peer.ID) error
 	cancel                context.CancelFunc
 	cfg                   *Config
@@ -94,7 +94,7 @@ func NewService(ctx context.Context, cfg *Config) (*Service, error) {
 		cancel:        cancel,
 		cfg:           cfg,
 		isPreGenesis:  true,
-		joinedTopics:  make(map[string]*pubsub.Topic, len(GossipTopicMappings)),
+		joinedTopics:  make(map[string]*pubsub.Topic, len(gossipTopicMappings)),
 		subnetsLock:   make(map[uint64]*sync.RWMutex),
 	}
 
@@ -137,7 +137,7 @@ func NewService(ctx context.Context, cfg *Config) (*Service, error) {
 	psOpts := []pubsub.Option{
 		pubsub.WithMessageSignaturePolicy(pubsub.StrictNoSign),
 		pubsub.WithNoAuthor(),
-		pubsub.WithMessageIdFn(msgIDFunction),
+		pubsub.WithMessageIdFn(s.msgIDFunction),
 		pubsub.WithSubscriptionFilter(s),
 		pubsub.WithPeerOutboundQueueSize(256),
 		pubsub.WithValidateQueueSize(256),
@@ -163,6 +163,9 @@ func NewService(ctx context.Context, cfg *Config) (*Service, error) {
 			},
 		},
 	})
+
+	// Initialize Data maps.
+	types.InitializeDataMaps()
 
 	return s, nil
 }
@@ -217,6 +220,9 @@ func (s *Service) Start() {
 		}
 		s.connectWithAllPeers(addrs)
 	}
+	// Initialize metadata according to the
+	// current epoch.
+	s.RefreshENR()
 
 	// Periodic functions.
 	runutil.RunEvery(s.ctx, params.BeaconNetworkConfig().TtfbTimeout, func() {
@@ -250,6 +256,7 @@ func (s *Service) Start() {
 	if p2pHostDNS != "" {
 		logExternalDNSAddr(s.host.ID(), p2pHostDNS, p2pTCPPort)
 	}
+	go s.forkWatcher()
 }
 
 // Stop the p2p service and terminate all peer connections.
@@ -396,7 +403,7 @@ func (s *Service) awaitStateInitialized() {
 				}
 				s.genesisTime = data.StartTime
 				s.genesisValidatorsRoot = data.GenesisValidatorsRoot
-				_, err := s.forkDigest() // initialize fork digest cache
+				_, err := s.currentForkDigest() // initialize fork digest cache
 				if err != nil {
 					log.WithError(err).Error("Could not initialize fork digest")
 				}

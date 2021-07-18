@@ -25,6 +25,7 @@ type ChainInfoFetcher interface {
 	GenesisFetcher
 	CanonicalFetcher
 	ForkFetcher
+	TimeFetcher
 }
 
 // TimeFetcher retrieves the Ethereum consensus data that's related to time.

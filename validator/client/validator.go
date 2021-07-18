@@ -18,8 +18,13 @@ import (
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/pkg/errors"
 	types "github.com/prysmaticlabs/eth2-types"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/altair"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
+	wrapperv1 "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1/wrapper"
+	"github.com/prysmaticlabs/prysm/proto/interfaces"
+	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
+	wrapperv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2/wrapper"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/event"
 	"github.com/prysmaticlabs/prysm/shared/featureconfig"
@@ -78,6 +83,7 @@ type validator struct {
 	keyManager                         keymanager.IKeymanager
 	beaconClient                       ethpb.BeaconChainClient
 	validatorClient                    ethpb.BeaconNodeValidatorClient
+	validatorClientV2                  prysmv2.BeaconNodeValidatorAltairClient
 	protector                          slashingiface.Protector
 	db                                 vdb.Database
 	graffiti                           []byte
@@ -256,7 +262,7 @@ func (v *validator) SlasherReady(ctx context.Context) error {
 // blocks from the beacon node. Upon receiving a block, the service
 // broadcasts it to a feed for other usages to subscribe to.
 func (v *validator) ReceiveBlocks(ctx context.Context, connectionErrorChannel chan<- error) {
-	stream, err := v.beaconClient.StreamBlocks(ctx, &ethpb.StreamBlocksRequest{VerifiedOnly: true})
+	stream, err := v.validatorClientV2.StreamBlocks(ctx, &ethpb.StreamBlocksRequest{VerifiedOnly: true})
 	if err != nil {
 		log.WithError(err).Error("Failed to retrieve blocks stream, " + iface.ErrConnectionIssue.Error())
 		connectionErrorChannel <- errors.Wrap(iface.ErrConnectionIssue, err.Error())
@@ -277,11 +283,23 @@ func (v *validator) ReceiveBlocks(ctx context.Context, connectionErrorChannel ch
 		if res == nil || res.Block == nil {
 			continue
 		}
-		if res.Block.Slot > v.highestValidSlot {
-			v.highestValidSlot = res.Block.Slot
+		if res.GetPhase0Block() == nil && res.GetAltairBlock() == nil {
+			continue
 		}
-
-		v.blockFeed.Send(res)
+		var blk interfaces.SignedBeaconBlock
+		switch {
+		case res.GetPhase0Block() != nil:
+			blk = wrapperv1.WrappedPhase0SignedBeaconBlock(res.GetPhase0Block())
+		case res.GetAltairBlock() != nil:
+			blk = wrapperv2.WrappedAltairSignedBeaconBlock(res.GetAltairBlock())
+		}
+		if blk == nil || blk.IsNil() {
+			continue
+		}
+		if blk.Block().Slot() > v.highestValidSlot {
+			v.highestValidSlot = blk.Block().Slot()
+		}
+		v.blockFeed.Send(blk)
 	}
 }
 
@@ -596,7 +614,7 @@ func (v *validator) subscribeToSubnets(ctx context.Context, res *ethpb.DutiesRes
 // validator assignments are unknown. Otherwise returns a valid ValidatorRole map.
 func (v *validator) RolesAt(ctx context.Context, slot types.Slot) (map[[48]byte][]iface.ValidatorRole, error) {
 	rolesAt := make(map[[48]byte][]iface.ValidatorRole)
-	for _, duty := range v.duties.Duties {
+	for validator, duty := range v.duties.Duties {
 		var roles []iface.ValidatorRole
 
 		if duty == nil {
@@ -622,6 +640,32 @@ func (v *validator) RolesAt(ctx context.Context, slot types.Slot) (map[[48]byte]
 			}
 
 		}
+
+		// Being assigned to a sync committee for a given slot means that the validator produces and
+		// broadcasts signatures for `slot - 1` for inclusion in `slot`. At the last slot of the epoch,
+		// the validator checks whether it's in the sync committee of following epoch.
+		inSyncCommittee := false
+		if helpers.IsEpochEnd(slot) {
+			if v.duties.NextEpochDuties[validator].IsSyncCommittee {
+				roles = append(roles, iface.RoleSyncCommittee)
+				inSyncCommittee = true
+			}
+		} else {
+			if duty.IsSyncCommittee {
+				roles = append(roles, iface.RoleSyncCommittee)
+				inSyncCommittee = true
+			}
+		}
+		if inSyncCommittee {
+			aggregator, err := v.isSyncCommitteeAggregator(ctx, slot, bytesutil.ToBytes48(duty.PublicKey))
+			if err != nil {
+				return nil, errors.Wrap(err, "could not check if a validator is a sync committee aggregator")
+			}
+			if aggregator {
+				roles = append(roles, iface.RoleSyncCommitteeAggregator)
+			}
+		}
+
 		if len(roles) == 0 {
 			roles = append(roles, iface.RoleUnknown)
 		}
@@ -654,6 +698,37 @@ func (v *validator) isAggregator(ctx context.Context, committee []types.Validato
 	b := hashutil.Hash(slotSig)
 
 	return binary.LittleEndian.Uint64(b[:8])%modulo == 0, nil
+}
+
+// isSyncCommitteeAggregator checks if a validator in an aggregator of a subcommittee for sync committee.
+// it uses a modulo calculated by validator count in committee and samples randomness around it.
+//
+// Spec code:
+// def is_sync_committee_aggregator(signature: BLSSignature) -> bool:
+//    modulo = max(1, SYNC_COMMITTEE_SIZE // SYNC_COMMITTEE_SUBNET_COUNT // TARGET_AGGREGATORS_PER_SYNC_SUBCOMMITTEE)
+//    return bytes_to_uint64(hash(signature)[0:8]) % modulo == 0
+func (v *validator) isSyncCommitteeAggregator(ctx context.Context, slot types.Slot, pubKey [48]byte) (bool, error) {
+	res, err := v.validatorClientV2.GetSyncSubcommitteeIndex(ctx, &prysmv2.SyncSubcommitteeIndexRequest{
+		PublicKey: pubKey[:],
+		Slot:      slot,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	for _, index := range res.Indices {
+		subCommitteeSize := params.BeaconConfig().SyncCommitteeSize / params.BeaconConfig().SyncCommitteeSubnetCount
+		subnet := index / subCommitteeSize
+		sig, err := v.signSyncSelectionData(ctx, pubKey, subnet, slot)
+		if err != nil {
+			return false, err
+		}
+		if altair.IsSyncCommitteeAggregator(sig) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // UpdateDomainDataCaches by making calls for all of the possible domain data. These can change when

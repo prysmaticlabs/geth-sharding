@@ -2,16 +2,21 @@ package p2p
 
 import (
 	"context"
+	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/libp2p/go-libp2p-core/peer"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	pubsub_pb "github.com/libp2p/go-libp2p-pubsub/pb"
+	"github.com/pkg/errors"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/encoder"
 	"github.com/prysmaticlabs/prysm/cmd/beacon-chain/flags"
 	pbrpc "github.com/prysmaticlabs/prysm/proto/beacon/rpc/v1"
+	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/featureconfig"
 	"github.com/prysmaticlabs/prysm/shared/hashutil"
+	"github.com/prysmaticlabs/prysm/shared/p2putils"
 	"github.com/prysmaticlabs/prysm/shared/params"
 )
 
@@ -35,6 +40,11 @@ const (
 	// misc
 	randomSubD = 6 // random gossip target
 )
+
+var errInvalidTopic = errors.New("invalid topic format")
+
+// Specifies the fixed size context length.
+const digestLength = 4
 
 // JoinTopic will join PubSub topic, if not already joined.
 func (s *Service) JoinTopic(topic string, opts ...pubsub.TopicOpt) (*pubsub.Topic, error) {
@@ -132,7 +142,26 @@ func (s *Service) peerInspector(peerMap map[peer.ID]*pubsub.PeerScoreSnapshot) {
 //    Otherwise, set `message-id` to the first 20 bytes of the `SHA256` hash of
 //    the concatenation of `MESSAGE_DOMAIN_INVALID_SNAPPY` with the raw message data,
 //    i.e. `SHA256(MESSAGE_DOMAIN_INVALID_SNAPPY + message.data)[:20]`.
-func msgIDFunction(pmsg *pubsub_pb.Message) string {
+func (s *Service) msgIDFunction(pmsg *pubsub_pb.Message) string {
+	digest, err := ExtractGossipDigest(*pmsg.Topic)
+	if err != nil {
+		// Impossible condition that should
+		// never be hit.
+		msg := make([]byte, 20)
+		copy(msg, "invalid")
+		return string(msg)
+	}
+	_, fEpoch, err := p2putils.RetrieveForkDataFromDigest(digest, s.genesisValidatorsRoot)
+	if err != nil {
+		// Impossible condition that should
+		// never be hit.
+		msg := make([]byte, 20)
+		copy(msg, "invalid")
+		return string(msg)
+	}
+	if fEpoch >= params.BeaconConfig().AltairForkEpoch {
+		return s.altairMsgID(pmsg)
+	}
 	decodedData, err := encoder.DecodeSnappy(pmsg.Data, params.BeaconNetworkConfig().GossipMaxSize)
 	if err != nil {
 		combinedData := append(params.BeaconNetworkConfig().MessageDomainInvalidSnappy[:], pmsg.Data...)
@@ -140,6 +169,43 @@ func msgIDFunction(pmsg *pubsub_pb.Message) string {
 		return string(h[:20])
 	}
 	combinedData := append(params.BeaconNetworkConfig().MessageDomainValidSnappy[:], decodedData...)
+	h := hashutil.Hash(combinedData)
+	return string(h[:20])
+}
+
+// Spec:
+// The derivation of the message-id has changed starting with Altair to incorporate the message topic along with the message data.
+// These are fields of the Message Protobuf, and interpreted as empty byte strings if missing. The message-id MUST be the following
+// 20 byte value computed from the message:
+//
+// If message.data has a valid snappy decompression, set message-id to the first 20 bytes of the SHA256 hash of the concatenation of
+// the following data: MESSAGE_DOMAIN_VALID_SNAPPY, the length of the topic byte string (encoded as little-endian uint64), the topic
+// byte string, and the snappy decompressed message data: i.e. SHA256(MESSAGE_DOMAIN_VALID_SNAPPY + uint_to_bytes(uint64(len(message.topic)))
+// + message.topic + snappy_decompress(message.data))[:20]. Otherwise, set message-id to the first 20 bytes of the SHA256 hash of the concatenation
+// of the following data: MESSAGE_DOMAIN_INVALID_SNAPPY, the length of the topic byte string (encoded as little-endian uint64),
+// the topic byte string, and the raw message data: i.e. SHA256(MESSAGE_DOMAIN_INVALID_SNAPPY + uint_to_bytes(uint64(len(message.topic))) + message.topic + message.data)[:20].
+func (s *Service) altairMsgID(pmsg *pubsub_pb.Message) string {
+	topic := *pmsg.Topic
+	topicLen := uint64(len(topic))
+	topicLenBytes := bytesutil.Uint64ToBytesLittleEndian(topicLen)
+
+	decodedData, err := encoder.DecodeSnappy(pmsg.Data, params.BeaconNetworkConfig().GossipMaxSize)
+	if err != nil {
+		totalLength := len(params.BeaconNetworkConfig().MessageDomainInvalidSnappy) + len(topicLenBytes) + int(topicLen) + len(pmsg.Data)
+		combinedData := make([]byte, 0, totalLength)
+		combinedData = append(combinedData, params.BeaconNetworkConfig().MessageDomainInvalidSnappy[:]...)
+		combinedData = append(combinedData, topicLenBytes...)
+		combinedData = append(combinedData, topic...)
+		combinedData = append(combinedData, pmsg.Data...)
+		h := hashutil.Hash(combinedData)
+		return string(h[:20])
+	}
+	totalLength := len(params.BeaconNetworkConfig().MessageDomainValidSnappy) + len(topicLenBytes) + int(topicLen) + len(decodedData)
+	combinedData := make([]byte, 0, totalLength)
+	combinedData = append(combinedData, params.BeaconNetworkConfig().MessageDomainValidSnappy[:]...)
+	combinedData = append(combinedData, topicLenBytes...)
+	combinedData = append(combinedData, topic...)
+	combinedData = append(combinedData, decodedData...)
 	h := hashutil.Hash(combinedData)
 	return string(h[:20])
 }
@@ -174,4 +240,28 @@ func convertTopicScores(topicMap map[string]*pubsub.TopicScoreSnapshot) map[stri
 		}
 	}
 	return newMap
+}
+
+// Extracts the relevant fork digest from the gossip topic.
+func ExtractGossipDigest(topic string) ([4]byte, error) {
+	splitParts := strings.Split(topic, "/")
+	parts := []string{}
+	for _, p := range splitParts {
+		if p == "" {
+			continue
+		}
+		parts = append(parts, p)
+	}
+	if len(parts) < 2 {
+		return [4]byte{}, errors.Wrapf(errInvalidTopic, "it only has %d parts: %v", len(parts), parts)
+	}
+	strDigest := parts[1]
+	digest, err := hex.DecodeString(strDigest)
+	if err != nil {
+		return [4]byte{}, err
+	}
+	if len(digest) != digestLength {
+		return [4]byte{}, errors.Errorf("invalid digest length wanted %d but got %d", digestLength, len(digest))
+	}
+	return bytesutil.ToBytes4(digest), nil
 }

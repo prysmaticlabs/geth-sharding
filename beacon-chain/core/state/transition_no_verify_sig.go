@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/altair"
 	b "github.com/prysmaticlabs/prysm/beacon-chain/core/blocks"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/state/interop"
@@ -15,6 +16,7 @@ import (
 	"github.com/prysmaticlabs/prysm/shared/bls"
 	"github.com/prysmaticlabs/prysm/shared/featureconfig"
 	"github.com/prysmaticlabs/prysm/shared/traceutil"
+	"github.com/prysmaticlabs/prysm/shared/version"
 	"go.opencensus.io/trace"
 )
 
@@ -150,6 +152,16 @@ func CalculateStateRoot(
 	if err != nil {
 		return [32]byte{}, errors.Wrap(err, "could not process block")
 	}
+	if signed.Version() == version.Altair {
+		sa, err := signed.Block().Body().SyncAggregate()
+		if err != nil {
+			return [32]byte{}, err
+		}
+		state, err = altair.ProcessSyncAggregate(state, sa)
+		if err != nil {
+			return [32]byte{}, err
+		}
+	}
 
 	return state.HashTreeRoot(ctx)
 }
@@ -181,6 +193,16 @@ func ProcessBlockNoVerifyAnySig(
 	state, err := ProcessBlockForStateRoot(ctx, state, signed)
 	if err != nil {
 		return nil, nil, err
+	}
+	if signed.Version() == version.Altair {
+		sa, err := signed.Block().Body().SyncAggregate()
+		if err != nil {
+			return nil, nil, err
+		}
+		state, err = altair.ProcessSyncAggregate(state, sa)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	bSet, err := b.BlockSignatureSet(state, blk.ProposerIndex(), signed.Signature(), blk.HashTreeRoot)
@@ -240,22 +262,22 @@ func ProcessOperationsNoVerifyAttsSigs(
 		return nil, errors.Wrap(err, "could not verify operation lengths")
 	}
 
-	state, err := b.ProcessProposerSlashings(ctx, state, signedBeaconBlock.Block().Body().ProposerSlashings(), v.SlashValidator)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not process block proposer slashings")
+	var err error
+	switch signedBeaconBlock.Version() {
+	case version.Phase0:
+		state, err = phase0Operations(ctx, state, signedBeaconBlock)
+		if err != nil {
+			return nil, err
+		}
+	case version.Altair:
+		state, err = altairOperations(ctx, state, signedBeaconBlock)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, errors.New("block does not have correct version")
 	}
-	state, err = b.ProcessAttesterSlashings(ctx, state, signedBeaconBlock.Block().Body().AttesterSlashings(), v.SlashValidator)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not process block attester slashings")
-	}
-	state, err = b.ProcessAttestationsNoVerifySignature(ctx, state, signedBeaconBlock)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not process block attestations")
-	}
-	state, err = b.ProcessDeposits(ctx, state, signedBeaconBlock.Block().Body().Deposits())
-	if err != nil {
-		return nil, errors.Wrap(err, "could not process block validator deposits")
-	}
+
 	state, err = b.ProcessVoluntaryExits(ctx, state, signedBeaconBlock.Block().Body().VoluntaryExits())
 	if err != nil {
 		return nil, errors.Wrap(err, "could not process validator exits")
@@ -308,4 +330,44 @@ func ProcessBlockForStateRoot(
 	}
 
 	return state, nil
+}
+
+// This calls altair specific block operations.
+func altairOperations(
+	ctx context.Context,
+	state iface.BeaconState,
+	signedBeaconBlock interfaces.SignedBeaconBlock) (iface.BeaconState, error) {
+	state, err := b.ProcessProposerSlashings(ctx, state, signedBeaconBlock.Block().Body().ProposerSlashings(), altair.SlashValidator)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not process block proposer slashings")
+	}
+	state, err = b.ProcessAttesterSlashings(ctx, state, signedBeaconBlock.Block().Body().AttesterSlashings(), altair.SlashValidator)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not process block attester slashings")
+	}
+	state, err = altair.ProcessAttestationsNoVerifySignature(ctx, state, signedBeaconBlock)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not process block attestations")
+	}
+	return altair.ProcessDeposits(ctx, state, signedBeaconBlock.Block().Body().Deposits())
+}
+
+// This calls phase 0 specific block operations.
+func phase0Operations(
+	ctx context.Context,
+	state iface.BeaconStateAltair,
+	signedBeaconBlock interfaces.SignedBeaconBlock) (iface.BeaconState, error) {
+	state, err := b.ProcessProposerSlashings(ctx, state, signedBeaconBlock.Block().Body().ProposerSlashings(), v.SlashValidator)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not process block proposer slashings")
+	}
+	state, err = b.ProcessAttesterSlashings(ctx, state, signedBeaconBlock.Block().Body().AttesterSlashings(), v.SlashValidator)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not process block attester slashings")
+	}
+	state, err = b.ProcessAttestationsNoVerifySignature(ctx, state, signedBeaconBlock)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not process block attestations")
+	}
+	return b.ProcessDeposits(ctx, state, signedBeaconBlock.Block().Body().Deposits())
 }

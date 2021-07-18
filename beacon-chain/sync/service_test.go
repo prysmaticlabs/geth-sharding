@@ -11,7 +11,7 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/feed"
 	statefeed "github.com/prysmaticlabs/prysm/beacon-chain/core/feed/state"
 	p2ptest "github.com/prysmaticlabs/prysm/beacon-chain/p2p/testing"
-	"github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	v1 "github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
 	mockSync "github.com/prysmaticlabs/prysm/beacon-chain/sync/initial-sync/testing"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	"github.com/prysmaticlabs/prysm/shared/abool"
@@ -135,6 +135,7 @@ func TestSyncHandlers_WaitTillSynced(t *testing.T) {
 			InitialSync:   &mockSync.Sync{IsSyncing: false},
 		},
 		chainStarted: abool.New(),
+		subHandler:   newSubTopicHandler(),
 	}
 
 	topic := "/eth2/%x/beacon_block"
@@ -157,7 +158,7 @@ func TestSyncHandlers_WaitTillSynced(t *testing.T) {
 	msg := testutil.NewBeaconBlock()
 	msg.Block.ParentRoot = testutil.Random32Bytes(t)
 	msg.Signature = sk.Sign([]byte("data")).Marshal()
-	p2p.Digest, err = r.forkDigest()
+	p2p.Digest, err = r.currentForkDigest()
 	r.cfg.BlockNotifier = chainService.BlockNotifier()
 	blockChan := make(chan feed.Event, 1)
 	sub := r.cfg.BlockNotifier.BlockFeed().Subscribe(blockChan)
@@ -213,6 +214,7 @@ func TestSyncService_StopCleanly(t *testing.T) {
 			InitialSync:   &mockSync.Sync{IsSyncing: false},
 		},
 		chainStarted: abool.New(),
+		subHandler:   newSubTopicHandler(),
 	}
 
 	go r.registerHandlers()
@@ -228,7 +230,7 @@ func TestSyncService_StopCleanly(t *testing.T) {
 	}
 
 	var err error
-	p2p.Digest, err = r.forkDigest()
+	p2p.Digest, err = r.currentForkDigest()
 	require.NoError(t, err)
 
 	// wait for chainstart to be sent

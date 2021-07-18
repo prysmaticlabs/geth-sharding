@@ -41,6 +41,11 @@ func (c *FakeCommitteeCache) ActiveIndicesCount(seed [32]byte) (int, error) {
 	return 0, nil
 }
 
+// ActiveBalance returns the active balance of a given seed stored in cache.
+func (c *FakeCommitteeCache) ActiveBalance(seed [32]byte) (uint64, error) {
+	return 0, nil
+}
+
 // ProposerIndices returns the proposer indices of a given seed.
 func (c *FakeCommitteeCache) ProposerIndices(seed [32]byte) ([]types.ValidatorIndex, error) {
 	return nil, nil

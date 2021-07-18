@@ -18,7 +18,7 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
 	p2ptest "github.com/prysmaticlabs/prysm/beacon-chain/p2p/testing"
 	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
-	"github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
+	v1 "github.com/prysmaticlabs/prysm/beacon-chain/state/v1"
 	mockSync "github.com/prysmaticlabs/prysm/beacon-chain/sync/initial-sync/testing"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
 	ethpb "github.com/prysmaticlabs/prysm/proto/eth/v1alpha1"
@@ -118,7 +118,7 @@ func TestValidateProposerSlashing_ValidSlashing(t *testing.T) {
 	r := &Service{
 		cfg: &Config{
 			P2P:         p,
-			Chain:       &mock.ChainService{State: s},
+			Chain:       &mock.ChainService{State: s, Genesis: time.Now()},
 			InitialSync: &mockSync.Sync{IsSyncing: false},
 		},
 		seenProposerSlashingCache: c,
@@ -128,6 +128,9 @@ func TestValidateProposerSlashing_ValidSlashing(t *testing.T) {
 	_, err = p.Encoding().EncodeGossip(buf, slashing)
 	require.NoError(t, err)
 	topic := p2p.GossipTypeMapping[reflect.TypeOf(slashing)]
+	d, err := r.currentForkDigest()
+	assert.NoError(t, err)
+	topic = r.addDigestToTopic(topic, d)
 	m := &pubsub.Message{
 		Message: &pubsubpb.Message{
 			Data:  buf.Bytes(),

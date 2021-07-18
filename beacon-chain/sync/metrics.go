@@ -64,7 +64,7 @@ func (s *Service) updateMetrics() {
 		return
 	}
 	// We update the dynamic subnet topics.
-	digest, err := s.forkDigest()
+	digest, err := s.currentForkDigest()
 	if err != nil {
 		log.WithError(err).Debugf("Could not compute fork digest")
 	}
@@ -84,7 +84,7 @@ func (s *Service) updateMetrics() {
 	}
 
 	// We update all other gossip topics.
-	for topic := range p2p.GossipTopicMappings {
+	for _, topic := range p2p.AllTopics() {
 		// We already updated attestation subnet topics.
 		if strings.Contains(topic, "beacon_attestation") {
 			continue

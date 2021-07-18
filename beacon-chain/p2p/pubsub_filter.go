@@ -7,7 +7,9 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	pubsubpb "github.com/libp2p/go-libp2p-pubsub/pb"
+	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p/encoder"
+	"github.com/prysmaticlabs/prysm/shared/p2putils"
 )
 
 var _ pubsub.SubscriptionFilter = (*Service)(nil)
@@ -30,12 +32,27 @@ func (s *Service) CanSubscribe(topic string) bool {
 	if parts[1] != "eth2" {
 		return false
 	}
-	fd, err := s.forkDigest()
+	fd, err := s.currentForkDigest()
 	if err != nil {
 		log.WithError(err).Error("Could not determine fork digest")
 		return false
 	}
-	if parts[2] != fmt.Sprintf("%x", fd) {
+	isForkNextEpoch, err := p2putils.IsForkNextEpoch(s.genesisTime, s.genesisValidatorsRoot)
+	if err != nil {
+		log.WithError(err).Error("Could not determine next fork epoch")
+		return false
+	}
+	if isForkNextEpoch {
+		currEpoch := helpers.SlotToEpoch(helpers.CurrentSlot(uint64(s.genesisTime.Unix())))
+		digest, err := p2putils.ForkDigestFromEpoch(currEpoch+1, s.genesisValidatorsRoot)
+		if err != nil {
+			log.WithError(err).Error("Could not determine next fork digest")
+			return false
+		}
+		if parts[2] != fmt.Sprintf("%x", fd) && parts[2] != fmt.Sprintf("%x", digest) {
+			return false
+		}
+	} else if parts[2] != fmt.Sprintf("%x", fd) {
 		return false
 	}
 	if parts[4] != encoder.ProtocolSuffixSSZSnappy {
@@ -43,7 +60,7 @@ func (s *Service) CanSubscribe(topic string) bool {
 	}
 
 	// Check the incoming topic matches any topic mapping. This includes a check for part[3].
-	for gt := range GossipTopicMappings {
+	for gt := range gossipTopicMappings {
 		if _, err := scanfcheck(strings.Join(parts[0:4], "/"), gt); err == nil {
 			return true
 		}

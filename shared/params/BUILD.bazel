@@ -39,8 +39,7 @@ go_test(
         "loader_test.go",
     ],
     data = glob(["*.yaml"]) + [
-        "@eth2_spec_tests_mainnet//:test_data",
-        "@eth2_spec_tests_minimal//:test_data",
+        "@eth2_spec//:spec_data",
     ],
     embed = [":go_default_library"],
     gotags = ["develop"],

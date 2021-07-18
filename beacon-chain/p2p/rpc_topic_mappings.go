@@ -7,56 +7,82 @@ import (
 	types "github.com/prysmaticlabs/eth2-types"
 	p2ptypes "github.com/prysmaticlabs/prysm/beacon-chain/p2p/types"
 	pb "github.com/prysmaticlabs/prysm/proto/beacon/p2p/v1"
+	"github.com/prysmaticlabs/prysm/shared/params"
 )
 
 // SchemaVersionV1 specifies the schema version for our rpc protocol ID.
 const SchemaVersionV1 = "/1"
 
+// SchemaVersionV2 specifies the next schema version for our rpc protocol ID.
+const SchemaVersionV2 = "/2"
+
 // Specifies the protocol prefix for all our Req/Resp topics.
 const protocolPrefix = "/eth2/beacon_chain/req"
 
-// Specifies the name for the status message topic.
-const statusMessageName = "/status"
+// StatusMessageName specifies the name for the status message topic.
+const StatusMessageName = "/status"
 
-// Specifies the name for the goodbye message topic.
-const goodbyeMessageName = "/goodbye"
+// GoodbyeMessageName specifies the name for the goodbye message topic.
+const GoodbyeMessageName = "/goodbye"
 
-// Specifies the name for the beacon blocks by range message topic.
-const beaconBlocksByRangeMessageName = "/beacon_blocks_by_range"
+// BeaconBlocksByRangeMessageName specifies the name for the beacon blocks by range message topic.
+const BeaconBlocksByRangeMessageName = "/beacon_blocks_by_range"
 
-// Specifies the name for the beacon blocks by root message topic.
-const beaconBlocksByRootsMessageName = "/beacon_blocks_by_root"
+// BeaconBlocksByRootsMessageName specifies the name for the beacon blocks by root message topic.
+const BeaconBlocksByRootsMessageName = "/beacon_blocks_by_root"
 
-// Specifies the name for the ping message topic.
-const pingMessageName = "/ping"
+// PingMessageName Specifies the name for the ping message topic.
+const PingMessageName = "/ping"
 
-// Specifies the name for the metadata message topic.
-const metadataMessageName = "/metadata"
+// MetadataMessageName specifies the name for the metadata message topic.
+const MetadataMessageName = "/metadata"
 
 const (
 	// V1 RPC Topics
 	// RPCStatusTopicV1 defines the v1 topic for the status rpc method.
-	RPCStatusTopicV1 = protocolPrefix + statusMessageName + SchemaVersionV1
+	RPCStatusTopicV1 = protocolPrefix + StatusMessageName + SchemaVersionV1
 	// RPCGoodByeTopicV1 defines the v1 topic for the goodbye rpc method.
-	RPCGoodByeTopicV1 = protocolPrefix + goodbyeMessageName + SchemaVersionV1
+	RPCGoodByeTopicV1 = protocolPrefix + GoodbyeMessageName + SchemaVersionV1
 	// RPCBlocksByRangeTopicV1 defines v1 the topic for the blocks by range rpc method.
-	RPCBlocksByRangeTopicV1 = protocolPrefix + beaconBlocksByRangeMessageName + SchemaVersionV1
+	RPCBlocksByRangeTopicV1 = protocolPrefix + BeaconBlocksByRangeMessageName + SchemaVersionV1
 	// RPCBlocksByRootTopicV1 defines the v1 topic for the blocks by root rpc method.
-	RPCBlocksByRootTopicV1 = protocolPrefix + beaconBlocksByRootsMessageName + SchemaVersionV1
+	RPCBlocksByRootTopicV1 = protocolPrefix + BeaconBlocksByRootsMessageName + SchemaVersionV1
 	// RPCPingTopicV1 defines the v1 topic for the ping rpc method.
-	RPCPingTopicV1 = protocolPrefix + pingMessageName + SchemaVersionV1
+	RPCPingTopicV1 = protocolPrefix + PingMessageName + SchemaVersionV1
 	// RPCMetaDataTopicV1 defines the v1 topic for the metadata rpc method.
-	RPCMetaDataTopicV1 = protocolPrefix + metadataMessageName + SchemaVersionV1
+	RPCMetaDataTopicV1 = protocolPrefix + MetadataMessageName + SchemaVersionV1
+
+	// V2 RPC Topics
+	// RPCBlocksByRangeTopicV2 defines v2 the topic for the blocks by range rpc method.
+	RPCBlocksByRangeTopicV2 = protocolPrefix + BeaconBlocksByRangeMessageName + SchemaVersionV2
+	// RPCBlocksByRootTopicV2 defines the v2 topic for the blocks by root rpc method.
+	RPCBlocksByRootTopicV2 = protocolPrefix + BeaconBlocksByRootsMessageName + SchemaVersionV2
+	// RPCMetaDataTopicV2 defines the v2 topic for the metadata rpc method.
+	RPCMetaDataTopicV2 = protocolPrefix + MetadataMessageName + SchemaVersionV2
+)
+
+// RPC errors for topic parsing.
+const (
+	invalidRPCMessageType = "provided message type doesn't have a registered mapping"
 )
 
 // RPCTopicMappings map the base message type to the rpc request.
 var RPCTopicMappings = map[string]interface{}{
-	RPCStatusTopicV1:        new(pb.Status),
-	RPCGoodByeTopicV1:       new(types.SSZUint64),
+	// RPC Status Message
+	RPCStatusTopicV1: new(pb.Status),
+	// RPC Goodbye Message
+	RPCGoodByeTopicV1: new(types.SSZUint64),
+	// RPC Block By Range Message
 	RPCBlocksByRangeTopicV1: new(pb.BeaconBlocksByRangeRequest),
-	RPCBlocksByRootTopicV1:  new(p2ptypes.BeaconBlockByRootsReq),
-	RPCPingTopicV1:          new(types.SSZUint64),
-	RPCMetaDataTopicV1:      new(interface{}),
+	RPCBlocksByRangeTopicV2: new(pb.BeaconBlocksByRangeRequest),
+	// RPC Block By Root Message
+	RPCBlocksByRootTopicV1: new(p2ptypes.BeaconBlockByRootsReq),
+	RPCBlocksByRootTopicV2: new(p2ptypes.BeaconBlockByRootsReq),
+	// RPC Ping Message
+	RPCPingTopicV1: new(types.SSZUint64),
+	// RPC Metadata Message
+	RPCMetaDataTopicV1: new(interface{}),
+	RPCMetaDataTopicV2: new(interface{}),
 }
 
 // Maps all registered protocol prefixes.
@@ -67,16 +93,24 @@ var protocolMapping = map[string]bool{
 // Maps all the protocol message names for the different rpc
 // topics.
 var messageMapping = map[string]bool{
-	statusMessageName:              true,
-	goodbyeMessageName:             true,
-	beaconBlocksByRangeMessageName: true,
-	beaconBlocksByRootsMessageName: true,
-	pingMessageName:                true,
-	metadataMessageName:            true,
+	StatusMessageName:              true,
+	GoodbyeMessageName:             true,
+	BeaconBlocksByRangeMessageName: true,
+	BeaconBlocksByRootsMessageName: true,
+	PingMessageName:                true,
+	MetadataMessageName:            true,
+}
+
+// Maps all the RPC messages which are to updated in altair.
+var altairMapping = map[string]bool{
+	BeaconBlocksByRangeMessageName: true,
+	BeaconBlocksByRootsMessageName: true,
+	MetadataMessageName:            true,
 }
 
 var versionMapping = map[string]bool{
 	SchemaVersionV1: true,
+	SchemaVersionV2: true,
 }
 
 // VerifyTopicMapping verifies that the topic and its accompanying
@@ -186,4 +220,18 @@ func (r RPCTopic) Version() string {
 		return ""
 	}
 	return version
+}
+
+// TopicFromMessage constructs the rpc topic from the provided message
+// type and epoch.
+func TopicFromMessage(msg string, epoch types.Epoch) (string, error) {
+	if !messageMapping[msg] {
+		return "", errors.Errorf("%s: %s", invalidRPCMessageType, msg)
+	}
+	version := SchemaVersionV1
+	isAltair := epoch >= params.BeaconConfig().AltairForkEpoch
+	if isAltair && altairMapping[msg] {
+		version = SchemaVersionV2
+	}
+	return protocolPrefix + msg + version, nil
 }
