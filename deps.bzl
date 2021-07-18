@@ -41,6 +41,14 @@ def prysm_deps():
         version = "v0.1.3",
     )
     go_repository(
+        name = "com_github_ferranbt_fastssz",
+        importpath = "github.com/ferranbt/fastssz",
+        nofuzz = True,
+        replace = "github.com/kasey/fastssz",
+        sum = "h1:Y5APFBP61jxeJTpuN2kme22OxF3+mOqQ9kmpyhKyiOc=",
+        version = "v0.0.0-20210624164955-4e94943eb307",
+    )
+    go_repository(
         name = "com_github_aead_siphash",
         importpath = "github.com/aead/siphash",
         sum = "h1:FwHfE/T45KPKYuuSAKyyvE+oPWcaQ+CUmFW0bPlM+kg=",
@@ -817,14 +825,6 @@ def prysm_deps():
         importpath = "github.com/fatih/color",
         sum = "h1:8xPHl4/q1VyqGIPif1F+1V3Y3lSmrq01EabUW3CoW5s=",
         version = "v1.9.0",
-    )
-    go_repository(
-        name = "com_github_ferranbt_fastssz",
-        importpath = "github.com/ferranbt/fastssz",
-        nofuzz = True,
-        replace = "github.com/rauljordan/fastssz",
-        sum = "h1:CoD/RaM9s8qfHA7jAqntW3jv+z9zPBXaxCaCByrKOmg=",
-        version = "v0.0.0-20210622230010-a131010e198f",
     )
 
     go_repository(

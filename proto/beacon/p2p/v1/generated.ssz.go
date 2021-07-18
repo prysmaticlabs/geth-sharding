@@ -2663,7 +2663,9 @@ func (s *SyncCommittee) HashTreeRootWith(hh *ssz.Hasher) (err error) {
 				err = ssz.ErrBytesLength
 				return
 			}
-			hh.Append(i)
+			padded := make([]byte, 64)
+			copy(padded[0:48], i[0:48])
+			hh.Append(padded)
 		}
 		hh.Merkleize(subIndx)
 	}
