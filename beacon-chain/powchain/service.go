@@ -72,6 +72,8 @@ var (
 	eth1Threshold = 20 * time.Minute
 	// error when eth1 node is not synced.
 	errNotSynced = errors.New("eth1 node is still syncing")
+	// error when eth1 node is not synched and genesis state does not exist
+	errNotSyncedNoGenesisState = errors.New("genesis state missing, eth1 node out of sync")
 	// error when eth1 node is too far behind.
 	errFarBehind = errors.Errorf("eth1 head is more than %s behind from current wall clock time", eth1Threshold.String())
 )
@@ -543,6 +545,17 @@ func (s *Service) waitForConnection() {
 				log.WithFields(logrus.Fields{
 					"endpoint": logutil.MaskCredentialsLogging(s.currHttpEndpoint.Url),
 				}).Info("Connected to eth1 proof-of-work chain")
+				return
+			}
+			genState, genErr := s.cfg.BeaconDB.GenesisState(s.ctx)
+			if genErr != nil {
+				s.runError = genErr
+				log.WithError(genErr).Error("Could not retrieve genesis state")
+				return
+			}
+			if genState.IsNil() {
+				s.runError = errNotSyncedNoGenesisState
+				log.Warning("Eth1 node is out of sync and genesis state is missing")
 				return
 			}
 			s.runError = errNotSynced
