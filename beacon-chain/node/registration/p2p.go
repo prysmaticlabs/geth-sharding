@@ -47,9 +47,13 @@ func readbootNodes(fileName string) ([]string, error) {
 		return nil, err
 	}
 	listNodes := make([]string, 0)
-	err = yaml.Unmarshal(fileContent, &listNodes)
+	err = yaml.UnmarshalStrict(fileContent, &listNodes)
 	if err != nil {
-		return nil, err
+		if _, ok := err.(*yaml.TypeError); !ok {
+			return nil, err
+		} else {
+			log.WithError(err).Error("There were some issues parsing the bootnodes from a yaml file.")
+		}
 	}
 	return listNodes, nil
 }

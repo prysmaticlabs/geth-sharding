@@ -36,7 +36,7 @@ func main() {
 		log.Fatalf("Failed to read file %s: %v", inFile, err)
 	}
 	data := make(KeyPairs, 0)
-	if err := yaml.Unmarshal(in, &data); err != nil {
+	if err := yaml.UnmarshalStrict(in, &data); err != nil {
 		log.Fatalf("Failed to unmarshal yaml: %v", err)
 	}
 
