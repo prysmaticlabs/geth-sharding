@@ -1,0 +1,39 @@
+load("@prysm//tools/go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["deposit.go"],
+    importpath = "github.com/prysmaticlabs/prysm/beacon-chain/core/altair",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//beacon-chain/core/blocks:go_default_library",
+        "//beacon-chain/state/interface:go_default_library",
+        "//proto/eth/v1alpha1:go_default_library",
+        "//shared/bytesutil:go_default_library",
+        "//shared/params:go_default_library",
+        "@com_github_pkg_errors//:go_default_library",
+        "@com_github_prysmaticlabs_eth2_types//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "deposit_fuzz_test.go",
+        "deposit_test.go",
+    ],
+    deps = [
+        ":go_default_library",
+        "//beacon-chain/core/helpers:go_default_library",
+        "//beacon-chain/state/v2:go_default_library",
+        "//proto/beacon/p2p/v1:go_default_library",
+        "//proto/eth/v1alpha1:go_default_library",
+        "//shared/bls:go_default_library",
+        "//shared/bytesutil:go_default_library",
+        "//shared/params:go_default_library",
+        "//shared/testutil:go_default_library",
+        "//shared/testutil/require:go_default_library",
+        "//shared/trieutil:go_default_library",
+        "@com_github_google_gofuzz//:go_default_library",
+    ],
+)
