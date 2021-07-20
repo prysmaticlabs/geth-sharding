@@ -8,30 +8,31 @@ import (
 )
 
 func TestOverlayParameters(t *testing.T) {
-	setPubSubParameters()
-	assert.Equal(t, gossipSubD, pubsub.GossipSubD, "gossipSubD")
-	assert.Equal(t, gossipSubDlo, pubsub.GossipSubDlo, "gossipSubDlo")
-	assert.Equal(t, gossipSubDhi, pubsub.GossipSubDhi, "gossipSubDhi")
+	pms := pubsubGossipParam()
+	assert.Equal(t, gossipSubD, pms.D, "gossipSubD")
+	assert.Equal(t, gossipSubDlo, pms.Dlo, "gossipSubDlo")
+	assert.Equal(t, gossipSubDhi, pms.Dhi, "gossipSubDhi")
 }
 
 func TestGossipParameters(t *testing.T) {
 	setPubSubParameters()
-	assert.Equal(t, gossipSubMcacheLen, pubsub.GossipSubHistoryLength, "gossipSubMcacheLen")
-	assert.Equal(t, gossipSubMcacheGossip, pubsub.GossipSubHistoryGossip, "gossipSubMcacheGossip")
-	assert.Equal(t, gossipSubSeenTTL, int(pubsub.TimeCacheDuration.Milliseconds()/pubsub.GossipSubHeartbeatInterval.Milliseconds()), "gossipSubSeenTtl")
+	pms := pubsubGossipParam()
+	assert.Equal(t, gossipSubMcacheLen, pms.HistoryLength, "gossipSubMcacheLen")
+	assert.Equal(t, gossipSubMcacheGossip, pms.HistoryGossip, "gossipSubMcacheGossip")
+	assert.Equal(t, gossipSubSeenTTL, int(pubsub.TimeCacheDuration.Milliseconds()/pms.HeartbeatInterval.Milliseconds()), "gossipSubSeenTtl")
 }
 
 func TestFanoutParameters(t *testing.T) {
-	setPubSubParameters()
-	if pubsub.GossipSubFanoutTTL != gossipSubFanoutTTL {
-		t.Errorf("gossipSubFanoutTTL, wanted: %d, got: %d", gossipSubFanoutTTL, pubsub.GossipSubFanoutTTL)
+	pms := pubsubGossipParam()
+	if pms.FanoutTTL != gossipSubFanoutTTL {
+		t.Errorf("gossipSubFanoutTTL, wanted: %d, got: %d", gossipSubFanoutTTL, pms.FanoutTTL)
 	}
 }
 
 func TestHeartbeatParameters(t *testing.T) {
-	setPubSubParameters()
-	if pubsub.GossipSubHeartbeatInterval != gossipSubHeartbeatInterval {
-		t.Errorf("gossipSubHeartbeatInterval, wanted: %d, got: %d", gossipSubHeartbeatInterval, pubsub.GossipSubHeartbeatInterval)
+	pms := pubsubGossipParam()
+	if pms.HeartbeatInterval != gossipSubHeartbeatInterval {
+		t.Errorf("gossipSubHeartbeatInterval, wanted: %d, got: %d", gossipSubHeartbeatInterval, pms.HeartbeatInterval)
 	}
 }
 

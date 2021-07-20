@@ -144,22 +144,31 @@ func msgIDFunction(pmsg *pubsub_pb.Message) string {
 	return string(h[:20])
 }
 
-func setPubSubParameters() {
-	pubsub.GossipSubDlo = gossipSubDlo
-	pubsub.GossipSubD = gossipSubD
-	pubsub.GossipSubHeartbeatInterval = gossipSubHeartbeatInterval
-	pubsub.GossipSubHistoryLength = gossipSubMcacheLen
-	pubsub.GossipSubHistoryGossip = gossipSubMcacheGossip
-	pubsub.TimeCacheDuration = 550 * gossipSubHeartbeatInterval
+// creates a custom gossipsub parameter set.
+func pubsubGossipParam() pubsub.GossipSubParams {
+	gParams := pubsub.DefaultGossipSubParams()
+	gParams.Dlo = gossipSubDlo
+	gParams.D = gossipSubD
+	gParams.HeartbeatInterval = gossipSubHeartbeatInterval
+	gParams.HistoryLength = gossipSubMcacheLen
+	gParams.HistoryGossip = gossipSubMcacheGossip
 
 	// Set a larger gossip history to ensure that slower
 	// messages have a longer time to be propagated. This
 	// comes with the tradeoff of larger memory usage and
 	// size of the seen message cache.
 	if featureconfig.Get().EnableLargerGossipHistory {
-		pubsub.GossipSubHistoryLength = 12
-		pubsub.GossipSubHistoryLength = 5
+		gParams.HistoryLength = 12
+		gParams.HistoryGossip = 5
 	}
+	return gParams
+}
+
+// We have to unfortunately set this globally in order
+// to configure our message id time-cache rather than instantiating
+// it with a router instance.
+func setPubSubParameters() {
+	pubsub.TimeCacheDuration = 550 * gossipSubHeartbeatInterval
 }
 
 // convert from libp2p's internal schema to a compatible prysm protobuf format.

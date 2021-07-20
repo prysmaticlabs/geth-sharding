@@ -143,6 +143,7 @@ func NewService(ctx context.Context, cfg *Config) (*Service, error) {
 		pubsub.WithValidateQueueSize(256),
 		pubsub.WithPeerScore(peerScoringParams()),
 		pubsub.WithPeerScoreInspect(s.peerInspector, time.Minute),
+		pubsub.WithGossipSubParams(pubsubGossipParam()),
 	}
 	// Set the pubsub global parameters that we require.
 	setPubSubParameters()
