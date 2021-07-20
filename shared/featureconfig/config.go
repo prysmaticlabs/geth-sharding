@@ -31,6 +31,7 @@ import (
 var log = logrus.WithField("prefix", "flags")
 
 const enabledFeatureFlag = "Enabled feature flag"
+const disabledFeatureFlag = "Disabled feature flag"
 
 // Flags is a struct to represent which features the client will perform on runtime.
 type Flags struct {
@@ -145,57 +146,57 @@ func ConfigureBeaconChain(ctx *cli.Context) {
 	configureTestnet(ctx, cfg)
 
 	if ctx.Bool(writeSSZStateTransitionsFlag.Name) {
-		log.WithField(writeSSZStateTransitionsFlag.Name, writeSSZStateTransitionsFlag.Usage).Warn(enabledFeatureFlag)
+		logBoolEnabled(writeSSZStateTransitionsFlag)
 		cfg.WriteSSZStateTransitions = true
 	}
 
 	cfg.EnableSSZCache = true
 
 	if ctx.String(kafkaBootstrapServersFlag.Name) != "" {
-		log.WithField(kafkaBootstrapServersFlag.Name, kafkaBootstrapServersFlag.Usage).Warn(enabledFeatureFlag)
+		logStringEnabled(kafkaBootstrapServersFlag)
 		cfg.KafkaBootstrapServers = ctx.String(kafkaBootstrapServersFlag.Name)
 	}
 	if ctx.IsSet(disableGRPCConnectionLogging.Name) {
-		log.WithField(disableGRPCConnectionLogging.Name, disableGRPCConnectionLogging.Usage).Warn(enabledFeatureFlag)
+		logBoolDisabled(disableGRPCConnectionLogging)
 		cfg.DisableGRPCConnectionLogs = true
 	}
 	cfg.AttestationAggregationStrategy = ctx.String(attestationAggregationStrategy.Name)
 	if ctx.Bool(forceOptMaxCoverAggregationStategy.Name) {
-		log.WithField(forceOptMaxCoverAggregationStategy.Name, forceOptMaxCoverAggregationStategy.Usage).Warn(enabledFeatureFlag)
+		logBoolEnabled(forceOptMaxCoverAggregationStategy)
 		cfg.AttestationAggregationStrategy = "opt_max_cover"
 	}
 	if ctx.Bool(enablePeerScorer.Name) {
-		log.WithField(enablePeerScorer.Name, enablePeerScorer.Usage).Warn(enabledFeatureFlag)
+		logBoolEnabled(enablePeerScorer)
 		cfg.EnablePeerScorer = true
 	}
 	if ctx.Bool(checkPtInfoCache.Name) {
 		log.Warn("Advance check point info cache is no longer supported and will soon be deleted")
 	}
 	if ctx.Bool(enableLargerGossipHistory.Name) {
-		log.WithField(enableLargerGossipHistory.Name, enableLargerGossipHistory.Usage).Warn(enabledFeatureFlag)
+		logBoolEnabled(enableLargerGossipHistory)
 		cfg.EnableLargerGossipHistory = true
 	}
 	if ctx.Bool(disableBroadcastSlashingFlag.Name) {
-		log.WithField(disableBroadcastSlashingFlag.Name, disableBroadcastSlashingFlag.Usage).Warn(enabledFeatureFlag)
+		logBoolDisabled(disableBroadcastSlashingFlag)
 		cfg.DisableBroadcastSlashings = true
 	}
 	if ctx.Bool(enableNextSlotStateCache.Name) {
-		log.WithField(enableNextSlotStateCache.Name, enableNextSlotStateCache.Usage).Warn(enabledFeatureFlag)
+		logBoolEnabled(enableNextSlotStateCache)
 		cfg.EnableNextSlotStateCache = true
 	}
 	cfg.UpdateHeadTimely = true
 	if ctx.Bool(disableUpdateHeadTimely.Name) {
-		log.WithField(disableUpdateHeadTimely.Name, disableUpdateHeadTimely.Usage).Warn(enabledFeatureFlag)
+		logBoolDisabled(disableUpdateHeadTimely)
 		cfg.UpdateHeadTimely = false
 	}
 	cfg.ProposerAttsSelectionUsingMaxCover = true
 	if ctx.Bool(disableProposerAttsSelectionUsingMaxCover.Name) {
-		log.WithField(disableProposerAttsSelectionUsingMaxCover.Name, disableProposerAttsSelectionUsingMaxCover.Usage).Warn(enabledFeatureFlag)
+		logBoolDisabled(disableProposerAttsSelectionUsingMaxCover)
 		cfg.ProposerAttsSelectionUsingMaxCover = false
 	}
 	cfg.EnableOptimizedBalanceUpdate = true
 	if ctx.Bool(disableOptimizedBalanceUpdate.Name) {
-		log.WithField(disableOptimizedBalanceUpdate.Name, disableOptimizedBalanceUpdate.Usage).Warn(enabledFeatureFlag)
+		logBoolDisabled(disableOptimizedBalanceUpdate)
 		cfg.EnableOptimizedBalanceUpdate = false
 	}
 	Init(cfg)
@@ -209,7 +210,7 @@ func ConfigureSlasher(ctx *cli.Context) {
 	configureTestnet(ctx, cfg)
 
 	if ctx.Bool(disableLookbackFlag.Name) {
-		log.WithField(disableLookbackFlag.Name, disableLookbackFlag.Usage).Warn(enabledFeatureFlag)
+		logBoolDisabled(disableLookbackFlag)
 		cfg.DisableLookback = true
 	}
 	Init(cfg)
@@ -222,27 +223,27 @@ func ConfigureValidator(ctx *cli.Context) {
 	cfg := &Flags{}
 	configureTestnet(ctx, cfg)
 	if ctx.Bool(enableExternalSlasherProtectionFlag.Name) {
-		log.WithField(enableExternalSlasherProtectionFlag.Name, enableExternalSlasherProtectionFlag.Usage).Warn(enabledFeatureFlag)
+		logBoolEnabled(enableExternalSlasherProtectionFlag)
 		cfg.SlasherProtection = true
 	}
 	if ctx.Bool(writeWalletPasswordOnWebOnboarding.Name) {
-		log.WithField(writeWalletPasswordOnWebOnboarding.Name, writeWalletPasswordOnWebOnboarding.Usage).Warn(enabledFeatureFlag)
+		logBoolEnabled(writeWalletPasswordOnWebOnboarding)
 		cfg.WriteWalletPasswordOnWebOnboarding = true
 	}
 	if ctx.Bool(disableAttestingHistoryDBCache.Name) {
-		log.WithField(disableAttestingHistoryDBCache.Name, disableAttestingHistoryDBCache.Usage).Warn(enabledFeatureFlag)
+		logBoolDisabled(disableAttestingHistoryDBCache)
 		cfg.DisableAttestingHistoryDBCache = true
 	}
 	if ctx.Bool(attestTimely.Name) {
-		log.WithField(attestTimely.Name, attestTimely.Usage).Warn(enabledFeatureFlag)
+		logBoolEnabled(attestTimely)
 		cfg.AttestTimely = true
 	}
 	if ctx.Bool(enableSlashingProtectionPruning.Name) {
-		log.WithField(enableSlashingProtectionPruning.Name, enableSlashingProtectionPruning.Usage).Warn(enabledFeatureFlag)
+		logBoolEnabled(enableSlashingProtectionPruning)
 		cfg.EnableSlashingProtectionPruning = true
 	}
 	if ctx.Bool(enableDoppelGangerProtection.Name) {
-		log.WithField(enableDoppelGangerProtection.Name, enableDoppelGangerProtection.Usage).Warn(enabledFeatureFlag)
+		logBoolEnabled(enableDoppelGangerProtection)
 		cfg.EnableDoppelGanger = true
 	}
 	cfg.KeystoreImportDebounceInterval = ctx.Duration(dynamicKeyReloadDebounceInterval.Name)
@@ -268,4 +269,16 @@ func complainOnDeprecatedFlags(ctx *cli.Context) {
 			log.Errorf("%s is deprecated and has no effect. Do not use this flag, it will be deleted soon.", f.Names()[0])
 		}
 	}
+}
+
+func logBoolEnabled(flag *cli.BoolFlag) {
+	log.WithField(flag.Name, flag.Usage).Warn(enabledFeatureFlag)
+}
+
+func logStringEnabled(flag *cli.StringFlag) {
+	log.WithField(flag.Name, flag.Usage).Warn(enabledFeatureFlag)
+}
+
+func logBoolDisabled(flag *cli.BoolFlag) {
+	log.WithField(flag.Name, flag.Usage).Warn(disabledFeatureFlag)
 }
