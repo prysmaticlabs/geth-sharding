@@ -17,6 +17,7 @@ var (
 	chainMetadataBucket     = []byte("chain-metadata")
 	checkpointBucket        = []byte("check-point")
 	powchainBucket          = []byte("powchain")
+	stateValidatorsBucket   = []byte("state-validators")
 
 	// Deprecated: This bucket was migrated in PR 6461. Do not use, except for migrations.
 	slotsHasObjectBucket = []byte("slots-has-objects")
@@ -33,6 +34,7 @@ var (
 	attestationTargetRootIndicesBucket  = []byte("attestation-target-root-indices")
 	attestationTargetEpochIndicesBucket = []byte("attestation-target-epoch-indices")
 	finalizedBlockRootsIndexBucket      = []byte("finalized-block-roots-index")
+	blockRootValidatorHashesBucket      = []byte("block-root-validator-hashes")
 
 	// Specific item keys.
 	headBlockRootKey          = []byte("head-root")

@@ -533,7 +533,7 @@ func TestServer_ListValidators_OnlyActiveValidators(t *testing.T) {
 		Active: true,
 	})
 	require.NoError(t, err)
-	assert.DeepEqual(t, activeValidators, received.ValidatorList)
+	assert.DeepSSZEqual(t, activeValidators, received.ValidatorList)
 }
 
 func TestServer_ListValidators_InactiveInTheMiddle(t *testing.T) {
@@ -1030,7 +1030,7 @@ func TestServer_ListValidators_FromOldEpoch(t *testing.T) {
 	}
 	res, err = bs.ListValidators(context.Background(), req)
 	require.NoError(t, err)
-	assert.DeepEqual(t, want, res.ValidatorList, "Incorrect number of validators")
+	assert.DeepSSZEqual(t, want, res.ValidatorList, "Incorrect number of validators")
 }
 
 func TestServer_ListValidators_ProcessHeadStateSlots(t *testing.T) {

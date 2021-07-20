@@ -39,17 +39,18 @@ type Flags struct {
 	PyrmontTestnet bool // PyrmontTestnet defines the flag through which we can enable the node to run on the Pyrmont testnet.
 
 	// Feature related flags.
-	WriteSSZStateTransitions           bool // WriteSSZStateTransitions to tmp directory.
-	SkipBLSVerify                      bool // Skips BLS verification across the runtime.
-	SlasherProtection                  bool // SlasherProtection protects validator fron sending over a slashable offense over the network using external slasher.
-	EnablePeerScorer                   bool // EnablePeerScorer enables experimental peer scoring in p2p.
-	EnableLargerGossipHistory          bool // EnableLargerGossipHistory increases the gossip history we store in our caches.
-	WriteWalletPasswordOnWebOnboarding bool // WriteWalletPasswordOnWebOnboarding writes the password to disk after Prysm web signup.
-	DisableAttestingHistoryDBCache     bool // DisableAttestingHistoryDBCache for the validator client increases disk reads/writes.
-	UpdateHeadTimely                   bool // UpdateHeadTimely updates head right after state transition.
-	ProposerAttsSelectionUsingMaxCover bool // ProposerAttsSelectionUsingMaxCover enables max-cover algorithm when selecting attestations for proposing.
-	EnableOptimizedBalanceUpdate       bool // EnableOptimizedBalanceUpdate uses an updated method of performing balance updates.
-	EnableDoppelGanger                 bool // EnableDoppelGanger enables doppelganger protection on startup for the validator.
+	WriteSSZStateTransitions            bool // WriteSSZStateTransitions to tmp directory.
+	SkipBLSVerify                       bool // Skips BLS verification across the runtime.
+	SlasherProtection                   bool // SlasherProtection protects validator fron sending over a slashable offense over the network using external slasher.
+	EnablePeerScorer                    bool // EnablePeerScorer enables experimental peer scoring in p2p.
+	EnableLargerGossipHistory           bool // EnableLargerGossipHistory increases the gossip history we store in our caches.
+	WriteWalletPasswordOnWebOnboarding  bool // WriteWalletPasswordOnWebOnboarding writes the password to disk after Prysm web signup.
+	DisableAttestingHistoryDBCache      bool // DisableAttestingHistoryDBCache for the validator client increases disk reads/writes.
+	UpdateHeadTimely                    bool // UpdateHeadTimely updates head right after state transition.
+	ProposerAttsSelectionUsingMaxCover  bool // ProposerAttsSelectionUsingMaxCover enables max-cover algorithm when selecting attestations for proposing.
+	EnableOptimizedBalanceUpdate        bool // EnableOptimizedBalanceUpdate uses an updated method of performing balance updates.
+	EnableDoppelGanger                  bool // EnableDoppelGanger enables doppelganger protection on startup for the validator.
+	EnableHistoricalSpaceRepresentation bool // EnableHistoricalSpaceRepresentation enables the saving of registry validators in separate buckets to save space
 	// Logging related toggles.
 	DisableGRPCConnectionLogs bool // Disables logging when a new grpc client has connected.
 
@@ -197,6 +198,10 @@ func ConfigureBeaconChain(ctx *cli.Context) {
 	if ctx.Bool(disableOptimizedBalanceUpdate.Name) {
 		log.WithField(disableOptimizedBalanceUpdate.Name, disableOptimizedBalanceUpdate.Usage).Warn(enabledFeatureFlag)
 		cfg.EnableOptimizedBalanceUpdate = false
+	}
+	if ctx.Bool(enableHistoricalSpaceRepresentation.Name) {
+		log.WithField(enableHistoricalSpaceRepresentation.Name, enableHistoricalSpaceRepresentation.Usage).Warn(enabledFeatureFlag)
+		cfg.EnableHistoricalSpaceRepresentation = true
 	}
 	Init(cfg)
 }
