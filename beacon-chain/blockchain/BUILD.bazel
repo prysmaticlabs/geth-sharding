@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "chain_info.go",
         "head.go",
+        "head_sync_committee_info.go",
         "info.go",
         "init_sync_process_block.go",
         "log.go",
@@ -43,6 +44,7 @@ go_library(
         "//beacon-chain/powchain:go_default_library",
         "//beacon-chain/state/interface:go_default_library",
         "//beacon-chain/state/stategen:go_default_library",
+        "//beacon-chain/state/v2:go_default_library",
         "//cmd/beacon-chain/flags:go_default_library",
         "//proto/beacon/p2p/v1:go_default_library",
         "//proto/eth/v1:go_default_library",
@@ -60,6 +62,7 @@ go_library(
         "//shared/traceutil:go_default_library",
         "//shared/version:go_default_library",
         "@com_github_emicklei_dot//:go_default_library",
+        "@com_github_hashicorp_golang_lru//:go_default_library",
         "@com_github_pkg_errors//:go_default_library",
         "@com_github_prometheus_client_golang//prometheus:go_default_library",
         "@com_github_prometheus_client_golang//prometheus/promauto:go_default_library",

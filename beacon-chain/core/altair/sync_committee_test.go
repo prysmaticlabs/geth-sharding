@@ -1,7 +1,6 @@
 package altair_test
 
 import (
-	"bytes"
 	"testing"
 
 	types "github.com/prysmaticlabs/eth2-types"
@@ -13,7 +12,6 @@ import (
 	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
 	"github.com/prysmaticlabs/prysm/shared/bls"
 	"github.com/prysmaticlabs/prysm/shared/params"
-	"github.com/prysmaticlabs/prysm/shared/testutil"
 	"github.com/prysmaticlabs/prysm/shared/testutil/require"
 )
 
@@ -205,94 +203,6 @@ func TestSyncCommittee_CanGet(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestAssignedToSyncCommittee(t *testing.T) {
-	s, _ := testutil.DeterministicGenesisStateAltair(t, 5*params.BeaconConfig().SyncCommitteeSize)
-	syncCommittee, err := altair.NextSyncCommittee(s)
-	require.NoError(t, err)
-	require.NoError(t, s.SetCurrentSyncCommittee(syncCommittee))
-	slot := helpers.CurrentEpoch(s) + 2*params.BeaconConfig().EpochsPerSyncCommitteePeriod
-	require.NoError(t, s.SetSlot(types.Slot(slot)))
-	syncCommittee, err = altair.NextSyncCommittee(s)
-	require.NoError(t, err)
-	require.NoError(t, s.SetNextSyncCommittee(syncCommittee))
-	require.NoError(t, s.SetSlot(0))
-
-	csc, err := s.CurrentSyncCommittee()
-	require.NoError(t, err)
-	nsc, err := s.NextSyncCommittee()
-	require.NoError(t, err)
-
-	currentSyncCommitteeIndex := 0
-	vals := s.Validators()
-	for i, val := range vals {
-		if bytes.Equal(val.PublicKey, csc.Pubkeys[0]) {
-			currentSyncCommitteeIndex = i
-		}
-	}
-	nextSyncCommitteeIndex := 0
-	for i, val := range vals {
-		if bytes.Equal(val.PublicKey, nsc.Pubkeys[0]) {
-			nextSyncCommitteeIndex = i
-		}
-	}
-
-	tests := []struct {
-		name   string
-		epoch  types.Epoch
-		check  types.ValidatorIndex
-		exists bool
-	}{
-		{
-			name:   "does not exist while asking current sync committee",
-			epoch:  0,
-			check:  0,
-			exists: false,
-		},
-		{
-			name:   "exists in current sync committee",
-			epoch:  0,
-			check:  types.ValidatorIndex(currentSyncCommitteeIndex),
-			exists: true,
-		},
-		{
-			name:   "exists in next sync committee",
-			epoch:  256,
-			check:  types.ValidatorIndex(nextSyncCommitteeIndex),
-			exists: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			exists, err := altair.AssignedToSyncCommittee(s, tt.epoch, tt.check)
-			require.NoError(t, err)
-			require.Equal(t, tt.exists, exists)
-		})
-	}
-}
-
-func TestAssignedToSyncCommittee_IncorrectEpoch(t *testing.T) {
-	s, _ := testutil.DeterministicGenesisStateAltair(t, 64)
-	_, err := altair.AssignedToSyncCommittee(s, params.BeaconConfig().EpochsPerSyncCommitteePeriod*2, 0)
-	require.ErrorContains(t, "epoch period 2 is not current period 0 or next period 1 in state", err)
-}
-
-func TestSubnetsForSyncCommittee(t *testing.T) {
-	s, _ := testutil.DeterministicGenesisStateAltair(t, params.BeaconConfig().SyncCommitteeSize)
-	syncCommittee, err := altair.NextSyncCommittee(s)
-	require.NoError(t, err)
-	require.NoError(t, s.SetCurrentSyncCommittee(syncCommittee))
-
-	positions, err := altair.SubnetsForSyncCommittee(s, 0)
-	require.NoError(t, err)
-	require.DeepEqual(t, []uint64{3}, positions)
-	positions, err = altair.SubnetsForSyncCommittee(s, 1)
-	require.NoError(t, err)
-	require.DeepEqual(t, []uint64{1}, positions)
-	positions, err = altair.SubnetsForSyncCommittee(s, 2)
-	require.NoError(t, err)
-	require.DeepEqual(t, []uint64{2}, positions)
 }
 
 func TestSyncCommitteePeriod(t *testing.T) {

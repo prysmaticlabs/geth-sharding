@@ -21,11 +21,12 @@ import (
 	"github.com/prysmaticlabs/prysm/beacon-chain/state/stategen"
 	mockSync "github.com/prysmaticlabs/prysm/beacon-chain/sync/initial-sync/testing"
 	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
+	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/testutil/assert"
 )
 
-func TestService_ValidateSyncCommittee(t *testing.T) {
+func TestService_ValidateSyncCommitteeMessage(t *testing.T) {
 	db := testingDB.SetupDB(t)
 	headRoot, keys := fillUpBlocksAndState(context.Background(), t, db)
 	defaultTopic := p2p.SyncCommitteeSubnetTopicFormat
@@ -212,10 +213,10 @@ func TestService_ValidateSyncCommittee(t *testing.T) {
 				hState, err := db.State(context.Background(), headRoot)
 				assert.NoError(t, err)
 				s.cfg.Chain = &mockChain.ChainService{
-					ValidatorsRoot: [32]byte{'A'},
-					Genesis:        time.Now().Add(-time.Second * time.Duration(params.BeaconConfig().SecondsPerSlot) * time.Duration(hState.Slot()-1)),
+					CurrentSyncCommitteeIndices: []types.CommitteeIndex{0},
+					ValidatorsRoot:              [32]byte{'A'},
+					Genesis:                     time.Now().Add(-time.Second * time.Duration(params.BeaconConfig().SecondsPerSlot) * time.Duration(hState.Slot()-1)),
 				}
-
 				numOfVals := hState.NumValidators()
 
 				chosenVal := numOfVals - 10
@@ -302,10 +303,6 @@ func TestService_ValidateSyncCommittee(t *testing.T) {
 				msg.BlockRoot = headRoot[:]
 				hState, err := db.State(context.Background(), headRoot)
 				assert.NoError(t, err)
-				s.cfg.Chain = &mockChain.ChainService{
-					ValidatorsRoot: [32]byte{'A'},
-					Genesis:        time.Now().Add(-time.Second * time.Duration(params.BeaconConfig().SecondsPerSlot) * time.Duration(hState.Slot()-1)),
-				}
 
 				numOfVals := hState.NumValidators()
 
@@ -314,6 +311,17 @@ func TestService_ValidateSyncCommittee(t *testing.T) {
 				msg.BlockRoot = headRoot[:]
 				msg.ValidatorIndex = types.ValidatorIndex(chosenVal)
 				msg.Slot = helpers.PrevSlot(hState.Slot())
+
+				d, err := helpers.Domain(hState.Fork(), helpers.SlotToEpoch(hState.Slot()), params.BeaconConfig().DomainSyncCommittee, hState.GenesisValidatorRoot())
+				assert.NoError(t, err)
+				subCommitteeSize := params.BeaconConfig().SyncCommitteeSize / params.BeaconConfig().SyncCommitteeSubnetCount
+				s.cfg.Chain = &mockChain.ChainService{
+					CurrentSyncCommitteeIndices: []types.CommitteeIndex{types.CommitteeIndex(subCommitteeSize)},
+					ValidatorsRoot:              [32]byte{'A'},
+					Genesis:                     time.Now().Add(-time.Second * time.Duration(params.BeaconConfig().SecondsPerSlot) * time.Duration(hState.Slot()-1)),
+					SyncCommitteeDomain:         d,
+					PublicKey:                   bytesutil.ToBytes48(keys[chosenVal].PublicKey().Marshal()),
+				}
 
 				// Set Topic and Subnet
 				digest, err := s.currentForkDigest()
@@ -350,10 +358,7 @@ func TestService_ValidateSyncCommittee(t *testing.T) {
 				msg.BlockRoot = headRoot[:]
 				hState, err := db.State(context.Background(), headRoot)
 				assert.NoError(t, err)
-				s.cfg.Chain = &mockChain.ChainService{
-					ValidatorsRoot: [32]byte{'A'},
-					Genesis:        time.Now().Add(-time.Second * time.Duration(params.BeaconConfig().SecondsPerSlot) * time.Duration(hState.Slot()-1)),
-				}
+				subCommitteeSize := params.BeaconConfig().SyncCommitteeSize / params.BeaconConfig().SyncCommitteeSubnetCount
 
 				numOfVals := hState.NumValidators()
 
@@ -363,6 +368,14 @@ func TestService_ValidateSyncCommittee(t *testing.T) {
 				rawBytes := p2ptypes.SSZBytes(headRoot[:])
 				sigRoot, err := helpers.ComputeSigningRoot(&rawBytes, d)
 				assert.NoError(t, err)
+
+				s.cfg.Chain = &mockChain.ChainService{
+					CurrentSyncCommitteeIndices: []types.CommitteeIndex{types.CommitteeIndex(subCommitteeSize)},
+					ValidatorsRoot:              [32]byte{'A'},
+					Genesis:                     time.Now().Add(-time.Second * time.Duration(params.BeaconConfig().SecondsPerSlot) * time.Duration(hState.Slot()-1)),
+					SyncCommitteeDomain:         d,
+					PublicKey:                   bytesutil.ToBytes48(keys[chosenVal].PublicKey().Marshal()),
+				}
 
 				msg.Signature = keys[chosenVal].Sign(sigRoot[:]).Marshal()
 				msg.BlockRoot = headRoot[:]
@@ -407,7 +420,7 @@ func TestService_ValidateSyncCommittee(t *testing.T) {
 				ValidatorData: nil,
 			}
 			if got := tt.svc.validateSyncCommitteeMessage(tt.args.ctx, tt.args.pid, msg); got != tt.want {
-				t.Errorf("validateSyncContributionAndProof() = %v, want %v", got, tt.want)
+				t.Errorf("validateSyncCommitteeMessage() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -26,6 +26,7 @@ type ChainInfoFetcher interface {
 	CanonicalFetcher
 	ForkFetcher
 	TimeFetcher
+	HeadDomainFetcher
 }
 
 // TimeFetcher retrieves the Ethereum consensus data that's related to time.
@@ -50,8 +51,12 @@ type HeadFetcher interface {
 	HeadSeed(ctx context.Context, epoch types.Epoch) ([32]byte, error)
 	HeadGenesisValidatorRoot() [32]byte
 	HeadETH1Data() *ethpb.Eth1Data
+	HeadPublicKeyToValidatorIndex(ctx context.Context, pubKey [48]byte) (types.ValidatorIndex, bool)
+	HeadValidatorIndexToPublicKey(ctx context.Context, index types.ValidatorIndex) ([48]byte, error)
 	ProtoArrayStore() *protoarray.Store
 	ChainHeads() ([][32]byte, []types.Slot)
+	HeadSyncCommitteeFetcher
+	HeadDomainFetcher
 }
 
 // ForkFetcher retrieves the current fork information of the Ethereum beacon chain.
@@ -284,4 +289,24 @@ func (s *Service) ChainHeads() ([][32]byte, []types.Slot) {
 	}
 
 	return headsRoots, headsSlots
+}
+
+// HeadPublicKeyToValidatorIndex returns the validator index of the `pubkey` in current head state.
+func (s *Service) HeadPublicKeyToValidatorIndex(ctx context.Context, pubKey [48]byte) (types.ValidatorIndex, bool) {
+	s.headLock.RLock()
+	defer s.headLock.RUnlock()
+
+	return s.headState(ctx).ValidatorIndexByPubkey(pubKey)
+}
+
+// HeadValidatorIndexToPublicKey returns the pubkey of the validator `index`  in current head state.
+func (s *Service) HeadValidatorIndexToPublicKey(ctx context.Context, index types.ValidatorIndex) ([48]byte, error) {
+	s.headLock.RLock()
+	defer s.headLock.RUnlock()
+
+	v, err := s.headState(ctx).ValidatorAtIndexReadOnly(index)
+	if err != nil {
+		return [48]byte{}, err
+	}
+	return v.PublicKey(), nil
 }

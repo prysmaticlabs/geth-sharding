@@ -45,8 +45,8 @@ type syncCommitteeIndexPosition struct {
 
 // Index position of individual validator of current epoch and previous epoch sync committee.
 type positionInCommittee struct {
-	currentEpoch []uint64
-	nextEpoch    []uint64
+	currentEpoch []types.CommitteeIndex
+	nextEpoch    []types.CommitteeIndex
 }
 
 // NewSyncCommittee initializes and returns a new SyncCommitteeCache.
@@ -60,7 +60,7 @@ func NewSyncCommittee() *SyncCommitteeCache {
 // sync committee. If the input validator index has no assignment, an empty list will be returned.
 // If the input root does not exist in cache, ErrNonExistingSyncCommitteeKey is returned.
 // Then performing manual checking of state for index position in state is recommended.
-func (s *SyncCommitteeCache) CurrentEpochIndexPosition(root [32]byte, valIdx types.ValidatorIndex) ([]uint64, error) {
+func (s *SyncCommitteeCache) CurrentEpochIndexPosition(root [32]byte, valIdx types.ValidatorIndex) ([]types.CommitteeIndex, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
@@ -69,7 +69,7 @@ func (s *SyncCommitteeCache) CurrentEpochIndexPosition(root [32]byte, valIdx typ
 		return nil, err
 	}
 	if pos == nil {
-		return []uint64{}, nil
+		return []types.CommitteeIndex{}, nil
 	}
 
 	return pos.currentEpoch, nil
@@ -79,7 +79,7 @@ func (s *SyncCommitteeCache) CurrentEpochIndexPosition(root [32]byte, valIdx typ
 // If the input validator index has no assignment, an empty list will be returned.
 // If the input root does not exist in cache, ErrNonExistingSyncCommitteeKey is returned.
 // Then performing manual checking of state for index position in state is recommended.
-func (s *SyncCommitteeCache) NextEpochIndexPosition(root [32]byte, valIdx types.ValidatorIndex) ([]uint64, error) {
+func (s *SyncCommitteeCache) NextEpochIndexPosition(root [32]byte, valIdx types.ValidatorIndex) ([]types.CommitteeIndex, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
@@ -88,7 +88,7 @@ func (s *SyncCommitteeCache) NextEpochIndexPosition(root [32]byte, valIdx types.
 		return nil, err
 	}
 	if pos == nil {
-		return []uint64{}, nil
+		return []types.CommitteeIndex{}, nil
 	}
 	return pos.nextEpoch, nil
 }
@@ -135,10 +135,10 @@ func (s *SyncCommitteeCache) UpdatePositionsInCommittee(syncCommitteeBoundaryRoo
 			continue
 		}
 		if _, ok := positionsMap[validatorIndex]; !ok {
-			m := &positionInCommittee{currentEpoch: []uint64{uint64(i)}, nextEpoch: []uint64{}}
+			m := &positionInCommittee{currentEpoch: []types.CommitteeIndex{types.CommitteeIndex(i)}, nextEpoch: []types.CommitteeIndex{}}
 			positionsMap[validatorIndex] = m
 		} else {
-			positionsMap[validatorIndex].currentEpoch = append(positionsMap[validatorIndex].currentEpoch, uint64(i))
+			positionsMap[validatorIndex].currentEpoch = append(positionsMap[validatorIndex].currentEpoch, types.CommitteeIndex(i))
 		}
 	}
 
@@ -153,10 +153,10 @@ func (s *SyncCommitteeCache) UpdatePositionsInCommittee(syncCommitteeBoundaryRoo
 			continue
 		}
 		if _, ok := positionsMap[validatorIndex]; !ok {
-			m := &positionInCommittee{nextEpoch: []uint64{uint64(i)}, currentEpoch: []uint64{}}
+			m := &positionInCommittee{nextEpoch: []types.CommitteeIndex{types.CommitteeIndex(i)}, currentEpoch: []types.CommitteeIndex{}}
 			positionsMap[validatorIndex] = m
 		} else {
-			positionsMap[validatorIndex].nextEpoch = append(positionsMap[validatorIndex].nextEpoch, uint64(i))
+			positionsMap[validatorIndex].nextEpoch = append(positionsMap[validatorIndex].nextEpoch, types.CommitteeIndex(i))
 		}
 	}
 

@@ -23,8 +23,8 @@ func TestSyncCommitteeCache_CanUpdateAndRetrieve(t *testing.T) {
 		name                 string
 		currentSyncCommittee *pb.SyncCommittee
 		nextSyncCommittee    *pb.SyncCommittee
-		currentSyncMap       map[types.ValidatorIndex][]uint64
-		nextSyncMap          map[types.ValidatorIndex][]uint64
+		currentSyncMap       map[types.ValidatorIndex][]types.CommitteeIndex
+		nextSyncMap          map[types.ValidatorIndex][]types.CommitteeIndex
 	}{
 		{
 			name: "only current epoch",
@@ -32,12 +32,12 @@ func TestSyncCommitteeCache_CanUpdateAndRetrieve(t *testing.T) {
 				pubKeys[1], pubKeys[2], pubKeys[3], pubKeys[2], pubKeys[2],
 			}),
 			nextSyncCommittee: convertToCommittee([][]byte{}),
-			currentSyncMap: map[types.ValidatorIndex][]uint64{
+			currentSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				1: {0},
 				2: {1, 3, 4},
 				3: {2},
 			},
-			nextSyncMap: map[types.ValidatorIndex][]uint64{
+			nextSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				1: {},
 				2: {},
 				3: {},
@@ -49,12 +49,12 @@ func TestSyncCommitteeCache_CanUpdateAndRetrieve(t *testing.T) {
 			nextSyncCommittee: convertToCommittee([][]byte{
 				pubKeys[1], pubKeys[2], pubKeys[3], pubKeys[2], pubKeys[2],
 			}),
-			currentSyncMap: map[types.ValidatorIndex][]uint64{
+			currentSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				1: {},
 				2: {},
 				3: {},
 			},
-			nextSyncMap: map[types.ValidatorIndex][]uint64{
+			nextSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				1: {0},
 				2: {1, 3, 4},
 				3: {2},
@@ -76,12 +76,12 @@ func TestSyncCommitteeCache_CanUpdateAndRetrieve(t *testing.T) {
 				pubKeys[4],
 				pubKeys[7],
 			}),
-			currentSyncMap: map[types.ValidatorIndex][]uint64{
+			currentSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				1: {0},
 				2: {1, 3, 4},
 				3: {2},
 			},
-			nextSyncMap: map[types.ValidatorIndex][]uint64{
+			nextSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				7: {0, 4},
 				6: {1},
 				5: {2},
@@ -104,12 +104,12 @@ func TestSyncCommitteeCache_CanUpdateAndRetrieve(t *testing.T) {
 				pubKeys[2],
 				pubKeys[1],
 			}),
-			currentSyncMap: map[types.ValidatorIndex][]uint64{
+			currentSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				1: {0},
 				2: {1, 3, 4},
 				3: {2},
 			},
-			nextSyncMap: map[types.ValidatorIndex][]uint64{
+			nextSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				1: {1, 4},
 				2: {0, 3},
 				3: {2},
@@ -129,10 +129,10 @@ func TestSyncCommitteeCache_CanUpdateAndRetrieve(t *testing.T) {
 				pubKeys[100],
 				pubKeys[100],
 			}),
-			currentSyncMap: map[types.ValidatorIndex][]uint64{
+			currentSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				100: {0, 1, 2, 3},
 			},
-			nextSyncMap: map[types.ValidatorIndex][]uint64{
+			nextSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				100: {0, 1, 2, 3},
 			},
 		},
@@ -150,10 +150,10 @@ func TestSyncCommitteeCache_CanUpdateAndRetrieve(t *testing.T) {
 				pubKeys[100],
 				pubKeys[100],
 			}),
-			currentSyncMap: map[types.ValidatorIndex][]uint64{
+			currentSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				1: {},
 			},
-			nextSyncMap: map[types.ValidatorIndex][]uint64{
+			nextSyncMap: map[types.ValidatorIndex][]types.CommitteeIndex{
 				1: {},
 			},
 		},

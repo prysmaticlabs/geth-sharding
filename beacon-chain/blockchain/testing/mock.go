@@ -52,6 +52,13 @@ type ChainService struct {
 	ForkChoiceStore             *protoarray.Store
 	VerifyBlkDescendantErr      error
 	Slot                        *types.Slot // Pointer because 0 is a useful value, so checking against it can be incorrect.
+	CurrentSyncCommitteeIndices []types.CommitteeIndex
+	NextSyncCommitteeIndices    []types.CommitteeIndex
+	SyncCommitteeDomain         []byte
+	SyncSelectionProofDomain    []byte
+	SyncContributionProofDomain []byte
+	PublicKey                   [48]byte
+	SyncCommitteePubkeys        [][]byte
 }
 
 // StateNotifier mocks the same method in the chain service.
@@ -392,4 +399,44 @@ func (s *ChainService) ChainHeads() ([][32]byte, []types.Slot) {
 			bytesutil.ToBytes32(bytesutil.PadTo([]byte("bar"), 32)),
 		},
 		[]types.Slot{0, 1}
+}
+
+// HeadPublicKeyToValidatorIndex mocks HeadPublicKeyToValidatorIndex and always return 0 and true.
+func (s *ChainService) HeadPublicKeyToValidatorIndex(ctx context.Context, pubKey [48]byte) (types.ValidatorIndex, bool) {
+	return 0, true
+}
+
+// HeadValidatorIndexToPublicKey mocks HeadValidatorIndexToPublicKey and always return empty and nil.
+func (s *ChainService) HeadValidatorIndexToPublicKey(ctx context.Context, index types.ValidatorIndex) ([48]byte, error) {
+	return s.PublicKey, nil
+}
+
+// HeadCurrentSyncCommitteeIndices mocks HeadCurrentSyncCommitteeIndices and always return `CurrentSyncCommitteeIndices`.
+func (s *ChainService) HeadCurrentSyncCommitteeIndices(ctx context.Context, index types.ValidatorIndex, slot types.Slot) ([]types.CommitteeIndex, error) {
+	return s.CurrentSyncCommitteeIndices, nil
+}
+
+// HeadNextSyncCommitteeIndices mocks HeadNextSyncCommitteeIndices and always return `HeadNextSyncCommitteeIndices`.
+func (s *ChainService) HeadNextSyncCommitteeIndices(ctx context.Context, index types.ValidatorIndex, slot types.Slot) ([]types.CommitteeIndex, error) {
+	return s.NextSyncCommitteeIndices, nil
+}
+
+// HeadSyncCommitteePubKeys mocks HeadSyncCommitteePubKeys and always return empty nil.
+func (s *ChainService) HeadSyncCommitteePubKeys(ctx context.Context, slot types.Slot, committeeIndex types.CommitteeIndex) ([][]byte, error) {
+	return s.SyncCommitteePubkeys, nil
+}
+
+// HeadSyncCommitteeDomain mocks HeadSyncCommitteeDomain and always return empty nil.
+func (s *ChainService) HeadSyncCommitteeDomain(ctx context.Context, slot types.Slot) ([]byte, error) {
+	return s.SyncCommitteeDomain, nil
+}
+
+// HeadSyncSelectionProofDomain mocks HeadSyncSelectionProofDomain and always return empty nil.
+func (s *ChainService) HeadSyncSelectionProofDomain(ctx context.Context, slot types.Slot) ([]byte, error) {
+	return s.SyncSelectionProofDomain, nil
+}
+
+// HeadSyncContributionProofDomain mocks HeadSyncContributionProofDomain and always return empty nil.
+func (s *ChainService) HeadSyncContributionProofDomain(ctx context.Context, slot types.Slot) ([]byte, error) {
+	return s.SyncContributionProofDomain, nil
 }

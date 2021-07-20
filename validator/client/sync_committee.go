@@ -107,7 +107,7 @@ func (v *validator) SubmitSignedContributionAndProof(ctx context.Context, slot t
 	selectionProofs := make([][]byte, len(indexRes.Indices))
 	for i, index := range indexRes.Indices {
 		subCommitteeSize := params.BeaconConfig().SyncCommitteeSize / params.BeaconConfig().SyncCommitteeSubnetCount
-		subnet := index / subCommitteeSize
+		subnet := uint64(index) / subCommitteeSize
 		selectionProof, err := v.signSyncSelectionData(ctx, pubKey, subnet, slot)
 		if err != nil {
 			log.Errorf("Could not sign selection data: %v", err)
@@ -123,7 +123,7 @@ func (v *validator) SubmitSignedContributionAndProof(ctx context.Context, slot t
 			continue
 		}
 		subCommitteeSize := params.BeaconConfig().SyncCommitteeSize / params.BeaconConfig().SyncCommitteeSubnetCount
-		subnet := comIdx / subCommitteeSize
+		subnet := uint64(comIdx) / subCommitteeSize
 		contribution, err := v.validatorClientV2.GetSyncCommitteeContribution(ctx, &prysmv2.SyncCommitteeContributionRequest{
 			Slot:      slot,
 			PublicKey: pubKey[:],

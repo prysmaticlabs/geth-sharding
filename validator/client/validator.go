@@ -722,7 +722,7 @@ func (v *validator) isSyncCommitteeAggregator(ctx context.Context, slot types.Sl
 
 	for _, index := range res.Indices {
 		subCommitteeSize := params.BeaconConfig().SyncCommitteeSize / params.BeaconConfig().SyncCommitteeSubnetCount
-		subnet := index / subCommitteeSize
+		subnet := uint64(index) / subCommitteeSize
 		sig, err := v.signSyncSelectionData(ctx, pubKey, subnet, slot)
 		if err != nil {
 			return false, err

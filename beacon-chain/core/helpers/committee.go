@@ -475,7 +475,7 @@ func IsNextEpochSyncCommittee(
 // current epoch sync committee for input validator.
 func CurrentEpochSyncSubcommitteeIndices(
 	st iface.BeaconStateAltair, valIdx types.ValidatorIndex,
-) ([]uint64, error) {
+) ([]types.CommitteeIndex, error) {
 	root, err := syncPeriodBoundaryRoot(st)
 	if err != nil {
 		return nil, err
@@ -509,7 +509,7 @@ func CurrentEpochSyncSubcommitteeIndices(
 // NextEpochSyncSubcommitteeIndices returns the subcommittee indices of the next epoch sync committee for input validator.
 func NextEpochSyncSubcommitteeIndices(
 	st iface.BeaconStateAltair, valIdx types.ValidatorIndex,
-) ([]uint64, error) {
+) ([]types.CommitteeIndex, error) {
 	root, err := syncPeriodBoundaryRoot(st)
 	if err != nil {
 		return nil, err
@@ -558,11 +558,11 @@ func UpdateSyncCommitteeCache(state iface.BeaconStateAltair) error {
 }
 
 // Loop through `pubKeys` for matching `pubKey` and get the indices where it matches.
-func findSubCommitteeIndices(pubKey []byte, pubKeys [][]byte) []uint64 {
-	var indices []uint64
+func findSubCommitteeIndices(pubKey []byte, pubKeys [][]byte) []types.CommitteeIndex {
+	var indices []types.CommitteeIndex
 	for i, k := range pubKeys {
 		if bytes.Equal(k, pubKey) {
-			indices = append(indices, uint64(i))
+			indices = append(indices, types.CommitteeIndex(i))
 		}
 	}
 	return indices

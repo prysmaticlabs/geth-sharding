@@ -221,7 +221,7 @@ func TestSubmitSignedContributionAndProof_NothingToDo(t *testing.T) {
 			Slot:      1,
 			PublicKey: pubKey[:],
 		},
-	).Return(&prysmv2.SyncSubcommitteeIndexResponse{Indices: []uint64{}}, nil)
+	).Return(&prysmv2.SyncSubcommitteeIndexResponse{Indices: []types.CommitteeIndex{}}, nil)
 
 	validator.SubmitSignedContributionAndProof(context.Background(), 1, pubKey)
 	require.LogsContain(t, hook, "Empty subcommittee index list, do nothing")
@@ -249,7 +249,7 @@ func TestSubmitSignedContributionAndProof_BadDomain(t *testing.T) {
 			Slot:      1,
 			PublicKey: pubKey[:],
 		},
-	).Return(&prysmv2.SyncSubcommitteeIndexResponse{Indices: []uint64{1}}, nil)
+	).Return(&prysmv2.SyncSubcommitteeIndexResponse{Indices: []types.CommitteeIndex{1}}, nil)
 
 	m.validatorClient.EXPECT().
 		DomainData(gomock.Any(), // ctx
@@ -290,7 +290,7 @@ func TestSubmitSignedContributionAndProof_CouldNotGetContribution(t *testing.T) 
 			Slot:      1,
 			PublicKey: pubKey[:],
 		},
-	).Return(&prysmv2.SyncSubcommitteeIndexResponse{Indices: []uint64{1}}, nil)
+	).Return(&prysmv2.SyncSubcommitteeIndexResponse{Indices: []types.CommitteeIndex{1}}, nil)
 
 	m.validatorClient.EXPECT().
 		DomainData(gomock.Any(), // ctx
@@ -340,7 +340,7 @@ func TestSubmitSignedContributionAndProof_CouldNotSubmitContribution(t *testing.
 			Slot:      1,
 			PublicKey: pubKey[:],
 		},
-	).Return(&prysmv2.SyncSubcommitteeIndexResponse{Indices: []uint64{1}}, nil)
+	).Return(&prysmv2.SyncSubcommitteeIndexResponse{Indices: []types.CommitteeIndex{1}}, nil)
 
 	m.validatorClient.EXPECT().
 		DomainData(gomock.Any(), // ctx
@@ -416,7 +416,7 @@ func TestSubmitSignedContributionAndProof_Ok(t *testing.T) {
 			Slot:      1,
 			PublicKey: pubKey[:],
 		},
-	).Return(&prysmv2.SyncSubcommitteeIndexResponse{Indices: []uint64{1}}, nil)
+	).Return(&prysmv2.SyncSubcommitteeIndexResponse{Indices: []types.CommitteeIndex{1}}, nil)
 
 	m.validatorClient.EXPECT().
 		DomainData(gomock.Any(), // ctx

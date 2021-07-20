@@ -9,17 +9,14 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	types "github.com/prysmaticlabs/eth2-types"
-	"github.com/prysmaticlabs/prysm/beacon-chain/core/altair"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
 	"github.com/prysmaticlabs/prysm/beacon-chain/p2p"
 	p2ptypes "github.com/prysmaticlabs/prysm/beacon-chain/p2p/types"
-	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
 	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
 	"github.com/prysmaticlabs/prysm/shared/bls"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
 	"github.com/prysmaticlabs/prysm/shared/params"
 	"github.com/prysmaticlabs/prysm/shared/traceutil"
-	"github.com/prysmaticlabs/prysm/shared/version"
 	"go.opencensus.io/trace"
 )
 
@@ -63,29 +60,21 @@ func (s *Service) validateSyncCommitteeMessage(ctx context.Context, pid peer.ID,
 	}
 
 	// The `subnet_id` is valid for the given validator. This implies the validator is part of the broader current sync committee along with the correct subcommittee.
-	// This could be better, retrieving the state multiple times with copies can easily lead to higher resource consumption by the node.
-	blockRoot := bytesutil.ToBytes32(m.BlockRoot)
-	blkState, err := s.cfg.StateGen.StateByRoot(ctx, blockRoot)
-	if err != nil {
-		traceutil.AnnotateError(span, err)
-		return pubsub.ValidationIgnore
-	}
-	bState, ok := blkState.(iface.BeaconStateAltair)
-	if !ok || bState.Version() != version.Altair {
-		log.Errorf("Sync message referencing non-altair state")
-		return pubsub.ValidationReject
-	}
 	// Check for validity of validator index.
-	val, err := bState.ValidatorAtIndexReadOnly(m.ValidatorIndex)
+	pubKey, err := s.cfg.Chain.HeadValidatorIndexToPublicKey(ctx, m.ValidatorIndex)
 	if err != nil {
 		traceutil.AnnotateError(span, err)
 		return pubsub.ValidationReject
 	}
-	subs, err := altair.SubnetsForSyncCommittee(bState, m.ValidatorIndex)
+	committeeIndices, err := s.cfg.Chain.HeadCurrentSyncCommitteeIndices(ctx, m.ValidatorIndex, m.Slot)
 	if err != nil {
 		traceutil.AnnotateError(span, err)
 		return pubsub.ValidationIgnore
 	}
+	if len(committeeIndices) == 0 {
+		return pubsub.ValidationIgnore
+	}
+
 	isValid := false
 	digest, err := s.currentForkDigest()
 	if err != nil {
@@ -95,8 +84,10 @@ func (s *Service) validateSyncCommitteeMessage(ctx context.Context, pid peer.ID,
 
 	format := p2p.GossipTypeMapping[reflect.TypeOf(&prysmv2.SyncCommitteeMessage{})]
 	// Validate that the validator is in the correct committee.
-	for _, idx := range subs {
-		if strings.HasPrefix(*msg.Topic, fmt.Sprintf(format, digest, idx)) {
+	subCommitteeSize := params.BeaconConfig().SyncCommitteeSize / params.BeaconConfig().SyncCommitteeSubnetCount
+	for _, idx := range committeeIndices {
+		subnet := uint64(idx) / subCommitteeSize
+		if strings.HasPrefix(*msg.Topic, fmt.Sprintf(format, digest, subnet)) {
 			isValid = true
 			break
 		}
@@ -107,8 +98,9 @@ func (s *Service) validateSyncCommitteeMessage(ctx context.Context, pid peer.ID,
 
 	// There has been no other valid sync committee signature for the declared `slot`, `validator_index` and `subcommittee_index`.
 	// In the event of `validator_index` belongs to multiple subnets, as long as one subnet has not been seen, we should let it in.
-	for _, idx := range subs {
-		if s.hasSeenSyncMessageIndexSlot(m.Slot, m.ValidatorIndex, idx) {
+	for _, idx := range committeeIndices {
+		subnet := uint64(idx) / subCommitteeSize
+		if s.hasSeenSyncMessageIndexSlot(m.Slot, m.ValidatorIndex, subnet) {
 			isValid = false
 		} else {
 			isValid = true
@@ -119,24 +111,24 @@ func (s *Service) validateSyncCommitteeMessage(ctx context.Context, pid peer.ID,
 	}
 
 	// The signature is valid for the message `beacon_block_root` for the validator referenced by `validator_index`.
-	d, err := helpers.Domain(bState.Fork(), helpers.SlotToEpoch(bState.Slot()), params.BeaconConfig().DomainSyncCommittee, bState.GenesisValidatorRoot())
+	d, err := s.cfg.Chain.HeadSyncCommitteeDomain(ctx, m.Slot)
 	if err != nil {
 		traceutil.AnnotateError(span, err)
 		return pubsub.ValidationIgnore
 	}
-	rawBytes := p2ptypes.SSZBytes(blockRoot[:])
+	rawBytes := p2ptypes.SSZBytes(m.BlockRoot)
 	sigRoot, err := helpers.ComputeSigningRoot(&rawBytes, d)
 	if err != nil {
 		traceutil.AnnotateError(span, err)
 		return pubsub.ValidationIgnore
 	}
-	rawKey := val.PublicKey()
+
 	blsSig, err := bls.SignatureFromBytes(m.Signature)
 	if err != nil {
 		traceutil.AnnotateError(span, err)
 		return pubsub.ValidationReject
 	}
-	pKey, err := bls.PublicKeyFromBytes(rawKey[:])
+	pKey, err := bls.PublicKeyFromBytes(pubKey[:])
 	if err != nil {
 		traceutil.AnnotateError(span, err)
 		return pubsub.ValidationIgnore
@@ -146,12 +138,12 @@ func (s *Service) validateSyncCommitteeMessage(ctx context.Context, pid peer.ID,
 		return pubsub.ValidationReject
 	}
 
-	for _, idx := range subs {
-		s.setSeenSyncMessageIndexSlot(m.Slot, m.ValidatorIndex, idx)
+	for _, idx := range committeeIndices {
+		subnet := uint64(idx) / subCommitteeSize
+		s.setSeenSyncMessageIndexSlot(m.Slot, m.ValidatorIndex, subnet)
 	}
 
 	msg.ValidatorData = m
-
 	return pubsub.ValidationAccept
 }
 

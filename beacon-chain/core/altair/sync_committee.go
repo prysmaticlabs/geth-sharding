@@ -2,7 +2,6 @@ package altair
 
 import (
 	"bytes"
-	"fmt"
 
 	"github.com/pkg/errors"
 	types "github.com/prysmaticlabs/eth2-types"
@@ -128,105 +127,6 @@ func NextSyncCommitteeIndices(state iface.BeaconStateAltair) ([]types.ValidatorI
 	return cIndices, nil
 }
 
-// AssignedToSyncCommittee returns true if input validator `i` is assigned to a sync committee at epoch `e`.
-//
-// Spec code:
-// def is_assigned_to_sync_committee(state: BeaconState,
-//                                  epoch: Epoch,
-//                                  validator_index: ValidatorIndex) -> bool:
-//    sync_committee_period = compute_sync_committee_period(epoch)
-//    current_epoch = get_current_epoch(state)
-//    current_sync_committee_period = compute_sync_committee_period(current_epoch)
-//    next_sync_committee_period = current_sync_committee_period + 1
-//    assert sync_committee_period in (current_sync_committee_period, next_sync_committee_period)
-//
-//    pubkey = state.validators[validator_index].pubkey
-//    if sync_committee_period == current_sync_committee_period:
-//        return pubkey in state.current_sync_committee.pubkeys
-//    else:  # sync_committee_period == next_sync_committee_period
-//        return pubkey in state.next_sync_committee.pubkeys
-func AssignedToSyncCommittee(
-	state iface.BeaconStateAltair,
-	epoch types.Epoch,
-	i types.ValidatorIndex,
-) (bool, error) {
-	p := helpers.SyncCommitteePeriod(epoch)
-	currentEpoch := helpers.CurrentEpoch(state)
-	currentPeriod := helpers.SyncCommitteePeriod(currentEpoch)
-	nextEpoch := currentPeriod + 1
-
-	if p != currentPeriod && p != nextEpoch {
-		return false, fmt.Errorf("epoch period %d is not current period %d or next period %d in state", p, currentEpoch, nextEpoch)
-	}
-
-	v, err := state.ValidatorAtIndexReadOnly(i)
-	if err != nil {
-		return false, err
-	}
-	vPubKey := v.PublicKey()
-
-	hasKey := func(c *pb.SyncCommittee, k [48]byte) (bool, error) {
-		for _, p := range c.Pubkeys {
-			if bytes.Equal(vPubKey[:], p) {
-				return true, nil
-			}
-		}
-		return false, nil
-	}
-
-	if p == currentPeriod {
-		c, err := state.CurrentSyncCommittee()
-		if err != nil {
-			return false, err
-		}
-		return hasKey(c, vPubKey)
-	}
-
-	c, err := state.NextSyncCommittee()
-	if err != nil {
-		return false, err
-	}
-	return hasKey(c, vPubKey)
-}
-
-// SubnetsForSyncCommittee returns subnet number of what validator `i` belongs to.
-//
-// Spec code:
-// def compute_subnets_for_sync_committee(state: BeaconState, validator_index: ValidatorIndex) -> Sequence[uint64]:
-//    next_slot_epoch = compute_epoch_at_slot(Slot(state.slot + 1))
-//    if compute_sync_committee_period(get_current_epoch(state)) == compute_sync_committee_period(next_slot_epoch):
-//        sync_committee = state.current_sync_committee
-//    else:
-//        sync_committee = state.next_sync_committee
-//
-//    target_pubkey = state.validators[validator_index].pubkey
-//    sync_committee_indices = [index for index, pubkey in enumerate(sync_committee.pubkeys) if pubkey == target_pubkey]
-//    return [
-//        uint64(index // (SYNC_COMMITTEE_SIZE // SYNC_COMMITTEE_SUBNET_COUNT))
-//        for index in sync_committee_indices
-//    ]
-func SubnetsForSyncCommittee(state iface.BeaconStateAltair, i types.ValidatorIndex) ([]uint64, error) {
-	committee, err := state.NextSyncCommittee()
-	if err != nil {
-		return nil, err
-	}
-
-	nextSlotEpoch := helpers.SlotToEpoch(state.Slot() + 1)
-	if helpers.SyncCommitteePeriod(nextSlotEpoch) == helpers.SyncCommitteePeriod(helpers.CurrentEpoch(state)) {
-		committee, err = state.CurrentSyncCommittee()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	v, err := state.ValidatorAtIndexReadOnly(i)
-	if err != nil {
-		return nil, err
-	}
-	vPubKey := v.PublicKey()
-	return SubnetsFromCommittee(vPubKey[:], committee), nil
-}
-
 // SubnetsFromCommittee retrieves the relevant subnets for the chosen validator.
 func SubnetsFromCommittee(pubkey []byte, comm *pb.SyncCommittee) []uint64 {
 	positions := make([]uint64, 0)
@@ -253,23 +153,7 @@ func SubnetsFromCommittee(pubkey []byte, comm *pb.SyncCommittee) []uint64 {
 //    sync_subcommittee_size = SYNC_COMMITTEE_SIZE // SYNC_COMMITTEE_SUBNET_COUNT
 //    i = subcommittee_index * sync_subcommittee_size
 //    return sync_committee.pubkeys[i:i + sync_subcommittee_size]
-func SyncSubCommitteePubkeys(st iface.BeaconStateAltair, subComIdx types.CommitteeIndex) ([][]byte, error) {
-	nextSlotEpoch := helpers.SlotToEpoch(st.Slot() + 1)
-	currEpoch := helpers.SlotToEpoch(st.Slot())
-
-	var syncCommittee *pb.SyncCommittee
-	var err error
-	if helpers.SyncCommitteePeriod(currEpoch) == helpers.SyncCommitteePeriod(nextSlotEpoch) {
-		syncCommittee, err = st.CurrentSyncCommittee()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		syncCommittee, err = st.NextSyncCommittee()
-		if err != nil {
-			return nil, err
-		}
-	}
+func SyncSubCommitteePubkeys(syncCommittee *pb.SyncCommittee, subComIdx types.CommitteeIndex) ([][]byte, error) {
 	subCommSize := params.BeaconConfig().SyncCommitteeSize / params.BeaconConfig().SyncCommitteeSubnetCount
 	i := uint64(subComIdx) * subCommSize
 	endOfSubCom := i + subCommSize
@@ -289,33 +173,4 @@ func IsSyncCommitteeAggregator(sig []byte) bool {
 	modulo := mathutil.Max(1, params.BeaconConfig().SyncCommitteeSize/params.BeaconConfig().SyncCommitteeSubnetCount/params.BeaconConfig().TargetAggregatorsPerSyncSubcommittee)
 	hashedSig := hashutil.Hash(sig)
 	return bytesutil.FromBytes8(hashedSig[:8])%modulo == 0
-}
-
-// SyncSelectionProofSigningRoot returns the signing root from the relevant provided data.
-//
-// def get_sync_committee_selection_proof(state: BeaconState,
-//                                       slot: Slot,
-//                                       subcommittee_index: uint64,
-//                                       privkey: int) -> BLSSignature:
-//    domain = get_domain(state, DOMAIN_SYNC_COMMITTEE_SELECTION_PROOF, compute_epoch_at_slot(slot))
-//    signing_data = SyncAggregatorSelectionData(
-//        slot=slot,
-//        subcommittee_index=subcommittee_index,
-//    )
-//    signing_root = compute_signing_root(signing_data, domain)
-//    return bls.Sign(privkey, signing_root)
-func SyncSelectionProofSigningRoot(st iface.BeaconState, slot types.Slot, comIdx types.CommitteeIndex) ([32]byte, error) {
-	dom, err := helpers.Domain(st.Fork(), helpers.SlotToEpoch(slot), params.BeaconConfig().DomainSyncCommitteeSelectionProof, st.GenesisValidatorRoot())
-	if err != nil {
-		return [32]byte{}, err
-	}
-	selectionData := &pb.SyncAggregatorSelectionData{Slot: slot, SubcommitteeIndex: uint64(comIdx)}
-	return helpers.ComputeSigningRoot(selectionData, dom)
-}
-
-// VerifySyncSelectionData verifies that the provided sync contribution has a valid
-// selection proof.
-func VerifySyncSelectionData(st iface.BeaconState, m *prysmv2.ContributionAndProof) error {
-	selectionData := &pb.SyncAggregatorSelectionData{Slot: m.Contribution.Slot, SubcommitteeIndex: uint64(m.Contribution.SubcommitteeIndex)}
-	return helpers.ComputeDomainVerifySigningRoot(st, m.AggregatorIndex, helpers.SlotToEpoch(m.Contribution.Slot), selectionData, params.BeaconConfig().DomainSyncCommitteeSelectionProof, m.SelectionProof)
 }

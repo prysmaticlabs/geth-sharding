@@ -17,12 +17,12 @@ func NewSyncCommittee() *FakeSyncCommitteeCache {
 }
 
 // CurrentEpochIndexPosition -- fake.
-func (s *FakeSyncCommitteeCache) CurrentEpochIndexPosition(root [32]byte, valIdx types.ValidatorIndex) ([]uint64, error) {
+func (s *FakeSyncCommitteeCache) CurrentEpochIndexPosition(root [32]byte, valIdx types.ValidatorIndex) ([]types.CommitteeIndex, error) {
 	return nil, nil
 }
 
 // NextEpochIndexPosition -- fake.
-func (s *FakeSyncCommitteeCache) NextEpochIndexPosition(root [32]byte, valIdx types.ValidatorIndex) ([]uint64, error) {
+func (s *FakeSyncCommitteeCache) NextEpochIndexPosition(root [32]byte, valIdx types.ValidatorIndex) ([]types.CommitteeIndex, error) {
 	return nil, nil
 }
 

@@ -149,7 +149,7 @@ go_test(
         "validate_beacon_attestation_test.go",
         "validate_beacon_blocks_test.go",
         "validate_proposer_slashing_test.go",
-        "validate_sync_committee_test.go",
+        "validate_sync_committee_message_test.go",
         "validate_sync_contrbution_proof_test.go",
         "validate_voluntary_exit_test.go",
     ],

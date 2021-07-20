@@ -3,16 +3,10 @@ package validator
 import (
 	"bytes"
 	"context"
-	"fmt"
-	"sync"
 
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/pkg/errors"
 	types "github.com/prysmaticlabs/eth2-types"
 	"github.com/prysmaticlabs/prysm/beacon-chain/core/helpers"
-	"github.com/prysmaticlabs/prysm/beacon-chain/core/state"
-	iface "github.com/prysmaticlabs/prysm/beacon-chain/state/interface"
-	stateAltair "github.com/prysmaticlabs/prysm/beacon-chain/state/v2"
 	prysmv2 "github.com/prysmaticlabs/prysm/proto/prysm/v2"
 	"github.com/prysmaticlabs/prysm/shared/bls"
 	"github.com/prysmaticlabs/prysm/shared/bytesutil"
@@ -42,15 +36,7 @@ func (vs *Server) GetSyncMessageBlockRoot(
 func (vs *Server) SubmitSyncMessage(ctx context.Context, msg *prysmv2.SyncCommitteeMessage) (*emptypb.Empty, error) {
 	errs, ctx := errgroup.WithContext(ctx)
 
-	hState, err := vs.HeadFetcher.HeadState(ctx)
-	if err != nil {
-		return &emptypb.Empty{}, err
-	}
-	val, err := hState.ValidatorAtIndex(msg.ValidatorIndex)
-	if err != nil {
-		return &emptypb.Empty{}, err
-	}
-	idxResp, err := vs.syncSubcommitteeIndex(ctx, bytesutil.ToBytes48(val.PublicKey), msg.Slot)
+	idxResp, err := vs.syncSubcommitteeIndex(ctx, msg.ValidatorIndex, msg.Slot)
 	if err != nil {
 		return &emptypb.Empty{}, err
 	}
@@ -58,7 +44,7 @@ func (vs *Server) SubmitSyncMessage(ctx context.Context, msg *prysmv2.SyncCommit
 	// This broadcasts for all subnets.
 	for _, id := range idxResp.Indices {
 		subCommitteeSize := params.BeaconConfig().SyncCommitteeSize / params.BeaconConfig().SyncCommitteeSubnetCount
-		subnet := id / subCommitteeSize
+		subnet := uint64(id) / subCommitteeSize
 		errs.Go(func() error {
 			return vs.P2P.BroadcastSyncCommitteeMessage(ctx, subnet, msg)
 		})
@@ -78,7 +64,11 @@ func (vs *Server) SubmitSyncMessage(ctx context.Context, msg *prysmv2.SyncCommit
 func (vs *Server) GetSyncSubcommitteeIndex(
 	ctx context.Context, req *prysmv2.SyncSubcommitteeIndexRequest,
 ) (*prysmv2.SyncSubcommitteeIndexResponse, error) {
-	indices, err := vs.syncSubcommitteeIndex(ctx, bytesutil.ToBytes48(req.PublicKey), req.Slot)
+	index, exists := vs.HeadFetcher.HeadPublicKeyToValidatorIndex(ctx, bytesutil.ToBytes48(req.PublicKey))
+	if !exists {
+		return nil, errors.New("public key does not exist in state")
+	}
+	indices, err := vs.syncSubcommitteeIndex(ctx, index, req.Slot)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not get sync subcommittee index: %v", err)
 	}
@@ -87,38 +77,15 @@ func (vs *Server) GetSyncSubcommitteeIndex(
 
 // syncSubcommitteeIndex returns a list of subcommittee index of a validator and slot for sync message aggregation duty.
 func (vs *Server) syncSubcommitteeIndex(
-	ctx context.Context, pubkey [48]byte, slot types.Slot,
+	ctx context.Context, index types.ValidatorIndex, slot types.Slot,
 ) (*prysmv2.SyncSubcommitteeIndexResponse, error) {
-	var headState iface.BeaconState
-	var err error
-	// If there's already a head state exists with the request slot, we don't need to process slots.
-	cachedState := syncCommitteeHeadStateCache.get(slot)
-	if cachedState != nil && !cachedState.IsNil() {
-		headState = cachedState
-	} else {
-		headState, err = vs.HeadFetcher.HeadState(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if slot > headState.Slot() {
-			headState, err = state.ProcessSlots(ctx, headState, slot)
-			if err != nil {
-				return nil, err
-			}
-		}
-		syncCommitteeHeadStateCache.add(slot, headState)
-	}
 
-	nextSlotEpoch := helpers.SlotToEpoch(headState.Slot() + 1)
-	currentEpoch := helpers.CurrentEpoch(headState)
+	nextSlotEpoch := helpers.SlotToEpoch(slot + 1)
+	currentEpoch := helpers.SlotToEpoch(slot)
 
-	valIdx, ok := headState.ValidatorIndexByPubkey(pubkey)
-	if !ok {
-		return nil, fmt.Errorf("validator with pubkey %#x not found", pubkey)
-	}
 	switch {
 	case helpers.SyncCommitteePeriod(nextSlotEpoch) == helpers.SyncCommitteePeriod(currentEpoch):
-		indices, err := helpers.CurrentEpochSyncSubcommitteeIndices(headState, valIdx)
+		indices, err := vs.HeadFetcher.HeadCurrentSyncCommitteeIndices(ctx, index, slot)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +94,7 @@ func (vs *Server) syncSubcommitteeIndex(
 		}, nil
 	// At sync committee period boundary, validator should sample the next epoch sync committee.
 	case helpers.SyncCommitteePeriod(nextSlotEpoch) == helpers.SyncCommitteePeriod(currentEpoch)+1:
-		indices, err := helpers.NextEpochSyncSubcommitteeIndices(headState, valIdx)
+		indices, err := vs.HeadFetcher.HeadNextSyncCommitteeIndices(ctx, index, slot)
 		if err != nil {
 			return nil, err
 		}
@@ -154,43 +121,20 @@ func (vs *Server) GetSyncCommitteeContribution(
 		return nil, status.Errorf(codes.Internal, "Could not get head root: %v", err)
 	}
 
-	var headState iface.BeaconState
-	slot := req.Slot
-	// If there's already a head state exists with the request slot, we don't need to process slots.
-	cachedState := syncCommitteeHeadStateCache.get(slot)
-	if cachedState != nil && !cachedState.IsNil() {
-		headState = cachedState
-	} else {
-		headState, err = vs.HeadFetcher.HeadState(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if slot > headState.Slot() {
-			headState, err = state.ProcessSlots(ctx, headState, slot)
-			if err != nil {
-				return nil, err
-			}
-		}
-		syncCommitteeHeadStateCache.add(slot, headState)
-	}
-
 	subCommitteeSize := params.BeaconConfig().SyncCommitteeSize / params.BeaconConfig().SyncCommitteeSubnetCount
 	sigs := make([]bls.Signature, 0, subCommitteeSize)
 	bits := prysmv2.NewSyncCommitteeAggregationBits()
 	for _, msg := range msgs {
 		if bytes.Equal(headRoot, msg.BlockRoot) {
-			v, err := headState.ValidatorAtIndexReadOnly(msg.ValidatorIndex)
-			if err != nil {
-				return nil, status.Errorf(codes.Internal, "Could not get validator at index: %v", err)
-			}
-			idxResp, err := vs.syncSubcommitteeIndex(ctx, v.PublicKey(), slot)
+			idxResp, err := vs.syncSubcommitteeIndex(ctx, msg.ValidatorIndex, req.Slot)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "Could not get sync subcommittee index: %v", err)
 			}
 			for _, index := range idxResp.Indices {
-				subnetIndex := index / subCommitteeSize
+				i := uint64(index)
+				subnetIndex := i / subCommitteeSize
 				if subnetIndex == req.SubnetId {
-					bits.SetBitAt(index%subCommitteeSize, true)
+					bits.SetBitAt(i%subCommitteeSize, true)
 					sig, err := bls.SignatureFromBytes(msg.Signature)
 					if err != nil {
 						return nil, status.Errorf(
@@ -210,7 +154,7 @@ func (vs *Server) GetSyncCommitteeContribution(
 		aggregatedSig = bls.AggregateSignatures(sigs).Marshal()
 	}
 	contribution := &prysmv2.SyncCommitteeContribution{
-		Slot:              headState.Slot(),
+		Slot:              req.Slot,
 		BlockRoot:         headRoot,
 		SubcommitteeIndex: req.SubnetId,
 		AggregationBits:   bits,
@@ -239,42 +183,4 @@ func (vs *Server) SubmitSignedContributionAndProof(
 	// Wait for p2p broadcast to complete and return the first error (if any)
 	err := errs.Wait()
 	return &emptypb.Empty{}, err
-}
-
-var syncCommitteeHeadStateCache = newSyncCommitteeHeadState()
-
-// syncCommitteeHeadState to caches latest head state requested by the sync committee participant.
-type syncCommitteeHeadState struct {
-	cache *lru.Cache
-	lock  sync.RWMutex
-}
-
-// newSyncCommitteeHeadState initializes the lru cache for `syncCommitteeHeadState` with size of 1.
-func newSyncCommitteeHeadState() *syncCommitteeHeadState {
-	c, err := lru.New(1) // only need size of 1 to avoid redundant state copy, HTR, and process slots.
-	if err != nil {
-		panic(err)
-	}
-	return &syncCommitteeHeadState{cache: c}
-}
-
-// add `slot` as key and `state` as value onto the lru cache.
-func (c *syncCommitteeHeadState) add(slot types.Slot, state iface.BeaconState) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.cache.Add(slot, state)
-}
-
-// get `state` using `slot` as key. Return nil if nothing is found.
-func (c *syncCommitteeHeadState) get(slot types.Slot) iface.BeaconState {
-	c.lock.RLock()
-	defer c.lock.RUnlock()
-	val, exists := c.cache.Get(slot)
-	if !exists {
-		return nil
-	}
-	if val == nil {
-		return nil
-	}
-	return val.(*stateAltair.BeaconState)
 }

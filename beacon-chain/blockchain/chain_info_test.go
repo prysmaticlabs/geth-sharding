@@ -297,3 +297,33 @@ func TestService_ChainHeads(t *testing.T) {
 	require.DeepEqual(t, [][32]byte{{'c'}, {'d'}, {'e'}}, roots)
 	require.DeepEqual(t, []types.Slot{102, 103, 104}, slots)
 }
+
+func TestService_HeadPublicKeyToValidatorIndex(t *testing.T) {
+	s, _ := testutil.DeterministicGenesisState(t, 10)
+	c := &Service{}
+	c.head = &head{state: s}
+
+	_, e := c.HeadPublicKeyToValidatorIndex(context.Background(), [48]byte{})
+	require.Equal(t, false, e)
+
+	v, err := s.ValidatorAtIndex(0)
+	require.NoError(t, err)
+
+	i, e := c.HeadPublicKeyToValidatorIndex(context.Background(), bytesutil.ToBytes48(v.PublicKey))
+	require.Equal(t, true, e)
+	require.Equal(t, types.ValidatorIndex(0), i)
+}
+
+func TestService_HeadValidatorIndexToPublicKey(t *testing.T) {
+	s, _ := testutil.DeterministicGenesisState(t, 10)
+	c := &Service{}
+	c.head = &head{state: s}
+
+	p, err := c.HeadValidatorIndexToPublicKey(context.Background(), 0)
+	require.NoError(t, err)
+
+	v, err := s.ValidatorAtIndex(0)
+	require.NoError(t, err)
+
+	require.Equal(t, bytesutil.ToBytes48(v.PublicKey), p)
+}
